@@ -54,12 +54,12 @@ export function BuildRouteSetRouteFooter({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 10,
+    gap: 6,
     width: '100%',
   },
   button: {
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: BuildRouteLayout.cardRadius,
     justifyContent: 'center',
     minHeight: BuildRouteLayout.setRouteMinHeight,
     paddingHorizontal: 16,
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   buttonText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
   buttonTextPrimary: {
@@ -84,14 +84,14 @@ const styles = StyleSheet.create({
   },
   nextStep: {
     color: AppColors.blue,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
   },
   helper: {
     color: AppColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: 'center',
   },
   loadingRow: {

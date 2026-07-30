@@ -129,6 +129,7 @@ export function BuildRoutePlanningScreen({
         <BuildRouteMapSummaryBar
           attached
           distanceLabel={distanceLabel}
+          routeScopeHint="Includes return to Finish"
           stopsLabel={stopsLabel}
           timeLabel={timeLabel}
         />
@@ -182,7 +183,7 @@ export function BuildRoutePlanningScreen({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 12,
+    gap: BuildRouteLayout.screenSectionGap,
     width: '100%',
   },
   mapColumn: {
@@ -219,7 +220,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   routeStack: {
-    gap: 12,
+    gap: BuildRouteLayout.screenSectionGap,
     width: '100%',
   },
   connectedRouteList: {
@@ -228,8 +229,8 @@ const styles = StyleSheet.create({
   },
   emptyHint: {
     color: AppColors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     paddingHorizontal: 4,
     textAlign: 'center',
   },

@@ -16,7 +16,7 @@ export function BuildRouteAddStopButton({ onPress }: BuildRouteAddStopButtonProp
       onPress={onPress}
       style={({ pressed }) => [styles.button, pressed && styles.pressed]}
     >
-      <Ionicons color={AppColors.blue} name="add" size={20} />
+      <Ionicons color={AppColors.blue} name="add" size={18} />
       <Text style={styles.label}>Add Stop</Text>
     </Pressable>
   );
@@ -27,19 +27,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'transparent',
     borderColor: 'rgba(96, 120, 160, 0.55)',
-    borderRadius: 14,
+    borderRadius: BuildRouteLayout.cardRadius,
     borderStyle: 'dashed',
     borderWidth: 1.5,
     flexDirection: 'row',
-    gap: 6,
+    gap: 5,
     justifyContent: 'center',
     minHeight: BuildRouteLayout.addStopButtonMinHeight,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     width: '100%',
   },
   label: {
     color: AppColors.blue,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   pressed: {

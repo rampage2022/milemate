@@ -53,7 +53,7 @@ function DevResetHomeButtonInner() {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.host, { bottom: insets.bottom + 72, left: insets.left + 8 }]}
+      style={[styles.host, { left: insets.left + 8, top: insets.top + 8 }]}
     >
       <Pressable
         accessibilityLabel="Developer reset to home launcher"
@@ -73,24 +73,24 @@ const styles = StyleSheet.create({
     zIndex: 9999,
   },
   button: {
-    backgroundColor: 'rgba(220, 38, 38, 0.92)',
-    borderColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'rgba(220, 38, 38, 0.82)',
+    borderColor: 'rgba(255, 255, 255, 0.28)',
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    elevation: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    elevation: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2,
   },
   label: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontVariant: ['tabular-nums'],
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   pressed: {
     opacity: 0.9,

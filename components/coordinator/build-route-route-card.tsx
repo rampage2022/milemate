@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BuildRouteLayout } from '@/components/coordinator/build-route-layout';
 import { formatPlanningRouteLocationDisplay } from '@/components/coordinator/planning-address-display';
-import { PlanningLayout } from '@/components/coordinator/planning-layout';
 import { AppColors } from '@/components/shared/app-theme';
 import type { RouteLocation } from '@/types/route-location';
 
@@ -28,7 +27,7 @@ const COPY: Record<
   },
   finish: {
     icon: 'flag-outline',
-    kicker: 'Final',
+    kicker: 'Finish',
     unsetLabel: 'Set finish location',
   },
 };
@@ -45,13 +44,15 @@ export function BuildRouteRouteCard({
   const isUnset = location === null;
   const interactive = !locked && Boolean(onPress);
 
-  let primary = isUnset ? copy.unsetLabel : display.primary;
-  let secondary = isUnset ? '' : display.secondary;
+  const primaryLine = isUnset ? copy.unsetLabel : display.primary;
+  let secondaryLine = isUnset ? '' : display.secondary;
 
   if (kind === 'finish' && returnToStart && !isUnset) {
-    primary = display.primary;
-    secondary = secondary.length > 0 ? `${secondary} · Same as start` : 'Same as start location';
+    secondaryLine =
+      secondaryLine.length > 0 ? `${secondaryLine} · Same as start` : 'Same as start location';
   }
+
+  const accessibilityAddress = [primaryLine, secondaryLine].filter((part) => part.length > 0).join(', ');
 
   const content = (
     <>
@@ -59,24 +60,30 @@ export function BuildRouteRouteCard({
         <Ionicons
           color={kind === 'start' ? AppColors.green : '#A78BFA'}
           name={copy.icon}
-          size={20}
+          size={16}
         />
       </View>
       <View style={styles.copy}>
         <Text style={styles.kicker}>{copy.kicker}</Text>
-        <Text numberOfLines={1} style={[styles.name, isUnset && styles.nameUnset]}>
-          {primary}
-        </Text>
-        {secondary.length > 0 ? (
-          <Text numberOfLines={1} style={styles.address}>
-            {secondary}
+        {isUnset ? (
+          <Text numberOfLines={1} style={styles.primaryUnset}>
+            {primaryLine}
           </Text>
         ) : (
-          <View style={styles.addressPlaceholder} />
+          <>
+            <Text numberOfLines={1} style={styles.primaryLine}>
+              {primaryLine}
+            </Text>
+            {secondaryLine.length > 0 ? (
+              <Text numberOfLines={1} style={styles.secondaryLine}>
+                {secondaryLine}
+              </Text>
+            ) : null}
+          </>
         )}
       </View>
       {interactive ? (
-        <Ionicons color={AppColors.textMuted} name="chevron-forward" size={18} />
+        <Ionicons color={AppColors.textMuted} name="chevron-forward" size={16} />
       ) : null}
     </>
   );
@@ -84,7 +91,7 @@ export function BuildRouteRouteCard({
   if (interactive) {
     return (
       <Pressable
-        accessibilityLabel={`${copy.kicker}, ${primary}`}
+        accessibilityLabel={`${copy.kicker}, ${accessibilityAddress}`}
         accessibilityRole="button"
         onPress={onPress}
         style={({ pressed }) => [styles.card, pressed && styles.pressed]}
@@ -106,12 +113,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: AppColors.card,
     borderColor: AppColors.border,
-    borderRadius: PlanningLayout.cardRadius,
+    borderRadius: BuildRouteLayout.cardRadius,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: 10,
-    height: BuildRouteLayout.routeListRowHeight,
-    paddingHorizontal: PlanningLayout.cardPaddingH,
+    gap: 8,
+    minHeight: BuildRouteLayout.routeListEndpointHeight,
+    paddingHorizontal: BuildRouteLayout.cardPaddingH,
+    paddingVertical: 8,
     width: '100%',
   },
   pressed: {
@@ -119,10 +127,10 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    borderRadius: 20,
-    height: 40,
+    borderRadius: 16,
+    height: 32,
     justifyContent: 'center',
-    width: 40,
+    width: 32,
   },
   iconStart: {
     backgroundColor: AppColors.greenSoft,
@@ -133,32 +141,32 @@ const styles = StyleSheet.create({
   copy: {
     flex: 1,
     flexShrink: 1,
-    gap: 2,
+    gap: 1,
     justifyContent: 'center',
     minWidth: 0,
   },
   kicker: {
     color: AppColors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  name: {
+  primaryLine: {
     color: AppColors.textPrimary,
-    fontSize: 15,
+    fontSize: BuildRouteLayout.endpointAddressSize,
     fontWeight: '700',
+    lineHeight: 18,
   },
-  nameUnset: {
+  primaryUnset: {
     color: AppColors.blue,
+    fontSize: BuildRouteLayout.endpointAddressSize,
     fontWeight: '600',
+    lineHeight: 18,
   },
-  address: {
+  secondaryLine: {
     color: AppColors.textSecondary,
     fontSize: 13,
     lineHeight: 17,
-  },
-  addressPlaceholder: {
-    height: 17,
   },
 });

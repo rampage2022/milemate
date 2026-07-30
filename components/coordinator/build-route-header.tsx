@@ -19,7 +19,7 @@ export function BuildRouteHeader({ onBack, onOpenMenu }: BuildRouteHeaderProps) 
         onPress={onBack}
         style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
       >
-        <Ionicons color={AppColors.textPrimary} name="chevron-back" size={24} />
+        <Ionicons color={AppColors.textPrimary} name="chevron-back" size={22} />
       </Pressable>
 
       <View style={styles.titleBlock}>
@@ -53,9 +53,9 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    height: 36,
+    height: 32,
     justifyContent: 'center',
-    width: 32,
+    width: 28,
   },
   titleBlock: {
     flex: 1,
@@ -75,9 +75,9 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     alignItems: 'center',
-    height: 36,
+    height: 32,
     justifyContent: 'center',
-    width: 36,
+    width: 32,
   },
   pressed: {
     opacity: 0.88,

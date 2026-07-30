@@ -1,16 +1,26 @@
 /** Layout tokens for Build Your Route (approved route planning mockup). */
 export const BuildRouteLayout = {
-  headerTitleSize: 20,
+  headerTitleSize: 18,
   headerSubtitleSize: 13,
-  /** ~upper third of screen — matches approved route planning mockup. */
-  mapHeightRatio: 0.32,
-  mapSummaryBarRadius: 14,
+  /** Upper map band — compact enough to show ~5 stop rows on a normal iPhone. */
+  mapHeightRatio: 0.26,
+  mapSummaryBarRadius: 12,
   emptyIconRingSize: 88,
   emptyIconSize: 36,
-  addStopButtonMinHeight: 52,
-  setRouteMinHeight: 54,
-  /** Uniform height for start, stop, and final rows in the connected route list. */
-  routeListRowHeight: 72,
+  screenSectionGap: 8,
+  cardRadius: 14,
+  cardPaddingH: 12,
+  addStopButtonMinHeight: 44,
+  setRouteMinHeight: 56,
+  /** Stop rows in the connected route list. */
+  routeListRowHeight: 76,
+  /** Start and finish endpoint rows — slightly shorter than stops. */
+  routeListEndpointHeight: 70,
   /** Spacing between rows inside the connected route list. */
   routeListConnectedGap: 8,
+  stopNameSize: 15,
+  stopAddressSize: 14,
+  legDistanceSize: 16,
+  endpointAddressSize: 14,
+  mapSummaryTextSize: 13,
 } as const;

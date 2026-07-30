@@ -11,7 +11,6 @@ import * as Haptics from 'expo-haptics';
 
 import { BuildRouteLayout } from '@/components/coordinator/build-route-layout';
 import { formatPlanningStopDisplay } from '@/components/coordinator/planning-address-display';
-import { PlanningLayout } from '@/components/coordinator/planning-layout';
 import { closeAllSwipeActions, SwipeActionRow } from '@/components/shared/swipe-action-row';
 import { AppColors } from '@/components/shared/app-theme';
 import { useGestureInteractionCleanup } from '@/hooks/use-gesture-interaction-cleanup';
@@ -113,7 +112,7 @@ function StopBrandIcon({ name }: { name: string }) {
       {spec.label ? (
         <Text style={styles.brandLetter}>{spec.label}</Text>
       ) : (
-        <Ionicons color={spec.glyphColor} name={spec.glyph} size={18} />
+        <Ionicons color={spec.glyphColor} name={spec.glyph} size={15} />
       )}
     </View>
   );
@@ -169,7 +168,7 @@ export function BuildRouteStopList({
 
     return (
       <SwipeActionRow
-        actionBorderRadius={PlanningLayout.cardRadius}
+        actionBorderRadius={BuildRouteLayout.cardRadius}
         enabled={!isDragging}
         rowId={item.visit.id}
         rowSpacing={ROW_GAP}
@@ -189,14 +188,14 @@ export function BuildRouteStopList({
                 accessibilityLabel={`Reorder stop ${stopNumber}`}
                 accessibilityRole="button"
                 delayLongPress={LONG_PRESS_DELAY_MS}
-                hitSlop={6}
+                hitSlop={8}
                 onLongPress={() => {
                   closeAllSwipeActions();
                   drag();
                 }}
                 style={styles.dragHandle}
               >
-                <Ionicons color={AppColors.textMuted} name="reorder-three" size={22} />
+                <Ionicons color={AppColors.textMuted} name="reorder-three" size={18} />
               </Pressable>
 
               <View style={styles.numberRing}>
@@ -217,19 +216,23 @@ export function BuildRouteStopList({
                   {item.name}
                 </Text>
                 {item.address.length > 0 ? (
-                  <Text numberOfLines={1} style={styles.address}>
-                    {item.address}
-                  </Text>
+                  <View style={styles.addressBlock}>
+                    <Text numberOfLines={2} style={styles.address}>
+                      {item.address}
+                    </Text>
+                  </View>
                 ) : (
-                  <View style={styles.addressPlaceholder} />
+                  <View style={styles.addressBlock} />
                 )}
               </Pressable>
 
-              {item.legDistanceLabel ? (
-                <Text style={styles.legDistance}>{item.legDistanceLabel}</Text>
-              ) : (
-                <View style={styles.legDistancePlaceholder} />
-              )}
+              <View style={styles.distanceColumn}>
+                {item.legDistanceLabel ? (
+                  <Text numberOfLines={1} style={styles.legDistance}>
+                    {item.legDistanceLabel}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           </ScaleDecorator>
         </OpacityDecorator>
@@ -279,12 +282,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: AppColors.card,
     borderColor: AppColors.border,
-    borderRadius: PlanningLayout.cardRadius,
+    borderRadius: BuildRouteLayout.cardRadius,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: 8,
-    height: BuildRouteLayout.routeListRowHeight,
-    paddingHorizontal: 10,
+    gap: 6,
+    minHeight: BuildRouteLayout.routeListRowHeight,
+    paddingHorizontal: BuildRouteLayout.cardPaddingH,
+    paddingVertical: 8,
     width: '100%',
   },
   rowActive: {
@@ -293,63 +297,71 @@ const styles = StyleSheet.create({
   dragHandle: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 22,
+    minHeight: 36,
+    width: 20,
   },
   numberRing: {
     alignItems: 'center',
     backgroundColor: 'transparent',
     borderColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1.5,
-    height: 28,
+    height: 24,
     justifyContent: 'center',
-    width: 28,
+    width: 24,
   },
   numberText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
   },
   brandIcon: {
     alignItems: 'center',
-    borderRadius: 18,
-    height: 36,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 36,
+    width: 30,
   },
   brandLetter: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
   },
   copyPressable: {
     flex: 1,
-    gap: 2,
+    gap: 1,
+    justifyContent: 'center',
+    minHeight: 36,
     minWidth: 0,
+    paddingRight: 4,
   },
   name: {
     color: AppColors.textPrimary,
-    fontSize: 15,
+    fontSize: BuildRouteLayout.stopNameSize,
     fontWeight: '700',
+  },
+  addressBlock: {
+    justifyContent: 'center',
+    minHeight: 36,
   },
   address: {
     color: AppColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: BuildRouteLayout.stopAddressSize,
+    lineHeight: 18,
   },
-  addressPlaceholder: {
-    height: 17,
+  distanceColumn: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    justifyContent: 'center',
+    minHeight: 36,
+    width: 48,
   },
   legDistance: {
     color: AppColors.blue,
-    fontSize: 13,
+    fontSize: BuildRouteLayout.legDistanceSize,
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
-    minWidth: 44,
     textAlign: 'right',
-  },
-  legDistancePlaceholder: {
-    minWidth: 44,
   },
 });
