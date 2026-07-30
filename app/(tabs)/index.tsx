@@ -1,98 +1,1258 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { NestableScrollContainer } from 'react-native-draggable-flatlist';
+import { useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { workdayDockTotalHeight } from '@/components/navigation/workday-dock';
 
-export default function HomeScreen() {
+import { CoordinatorPlanningScreen } from '@/components/coordinator/coordinator-planning-screen';
+import { CoordinatorLiveRouteScreen } from '@/components/coordinator/coordinator-live-route-screen';
+import { HomeIdleScreen } from '@/components/home/home-idle-screen';
+import { HomeLayout } from '@/components/home/home-layout';
+import { SavedRoutesSheet } from '@/components/coordinator/saved-routes-sheet';
+import { RouteCompleteScreen } from '@/components/coordinator/route-complete-screen';
+import { PlanningRouteDock } from '@/components/coordinator/planning-route-dock';
+import { PlanningLayout } from '@/components/coordinator/planning-layout';
+import { WorkdayPreviewScreen } from '@/components/coordinator/workday-preview-screen';
+import { RouteCalculationTransition } from '@/components/coordinator/route-calculation-transition';
+import { HomeHeader } from '@/components/home/home-header';
+import { AppColors, AppSpacing } from '@/components/shared/app-theme';
+import { WorkdayCompleteCard } from '@/components/today/workday-complete-card';
+import { useRouteEditSession } from '@/contexts/route-edit-session-context';
+import { useVisitAdvancement } from '@/contexts/visit-advancement-context';
+import { useWorkdayNavigation } from '@/contexts/workday-navigation-context';
+import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
+import { useMyLocations } from '@/hooks/use-my-locations';
+import { usePlanningRouteSummary } from '@/hooks/use-planning-route-summary';
+import { useRoutePlanning } from '@/hooks/use-route-planning';
+import { useTodayRoute } from '@/hooks/use-today-route';
+import { getActiveTrip, saveActiveTrip } from '@/services/active-trip';
+import { clearRouteSessionTimingForToday } from '@/services/route-session-timing';
+import { clearPendingVisitAdvancement } from '@/services/pending-advancement';
+import { refreshWorkdayCoordinatorFromPersistence } from '@/services/workday-coordinator-integration';
+import {
+  applyMakeFirst,
+  applyMakeNext,
+  applyRemoveFromToday,
+  applyRouteReorder,
+} from '@/services/route-edit-commands';
+import {
+  calculateTodayRoute,
+  clearTodayRouteStops,
+  type RouteCalculationStep,
+} from '@/services/route-calculation';
+import { getEffectiveEndLocation } from '@/services/route-planning';
+import { useDynamicEstimatedFinishAt } from '@/hooks/use-dynamic-estimated-finish';
+import {
+  attachTripIdToTodayVisits,
+  checkInVisit,
+  prepareVisitsForWorkdayRoutePlanning,
+  replaceTodayVisits,
+  startTodayRoute,
+  undoActiveCheckIn,
+} from '@/services/store-visits';
+import { isTodayRouteStarted } from '@/utils/today-route-start';
+import type { StoreVisit } from '@/types/store-visit';
+import {
+  applySavedRouteToToday,
+  ensureDefaultSavedRoutes,
+  getSavedRoutes,
+} from '@/services/saved-routes';
+import { countFinishedVisits } from '@/utils/pre-day-briefing';
+import { shouldShowPlanningRouteDock } from '@/utils/coordinator-screen-presentation';
+import { buildBriefingPresentation } from '@/utils/briefing-presentation';
+import {
+  buildDailyBriefingSummary,
+  resolveCoordinatorScreenMode,
+} from '@/utils/planned-route-briefing';
+import {
+  buildActiveRouteContextFromPlanningDraft,
+  syncPlanningDraftToTodayRouteSelection,
+} from '@/utils/planning-route-sync';
+import { formatTodayHeading } from '@/utils/today-date';
+import { useGestureInteractionCleanup } from '@/hooks/use-gesture-interaction-cleanup';
+import { resetRoutePlanningForNewRoute } from '@/services/route-planning-reset';
+import { shouldShowRouteEntryLauncher } from '@/utils/route-tab-experience';
+import { hasVisitStops } from '@/utils/route-state';
+import { subscribeDevResetHome } from '@/utils/dev-reset-home-signal';
+import type { SavedRoute } from '@/types/saved-route';
+import { prepareStartDayLocationRequirements } from '@/services/start-day-flow';
+
+/** Temporarily hidden while route summary and optimization UX are being redesigned. */
+const ROUTE_PLANNING_DOCK_UI_ENABLED = false;
+
+export default function TodayScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  useGestureInteractionCleanup('Today');
+  const { width } = useWindowDimensions();
+  const scrollRef = useRef<ComponentRef<typeof NestableScrollContainer>>(null);
+  const buildRouteAddStopAnchorRef = useRef<View>(null);
+  const mapSectionRef = useRef<View>(null);
+  const scrollContentRef = useRef<View>(null);
+  const {
+    focusScrollTarget,
+    liveRouteViewMode,
+    mode: navigationMode,
+    registerHandlers,
+    requestScrollTo,
+    setPreWorkdayTabBarHidden,
+  } = useWorkdayNavigation();
+  const {
+    continueToNextStop,
+    dismissRouteCompletePhase,
+    enterRouteCompletePhase,
+    routeCompleteCelebrationKey,
+    phase: visitCompletionPhase,
+    requestRouteRefresh,
+  } = useVisitAdvancement();
+  const { enterRouteEdit } = useRouteEditSession();
+  const [finishWorkdayError, setFinishWorkdayError] = useState<string | null>(null);
+  const [isFinishingWorkday, setIsFinishingWorkday] = useState(false);
+  const [isStartingDay, setIsStartingDay] = useState(false);
+  const [startDayError, setStartDayError] = useState<string | null>(null);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [activeCalculationStep, setActiveCalculationStep] =
+    useState<RouteCalculationStep | null>(null);
+  const [completedCalculationSteps, setCompletedCalculationSteps] = useState<
+    RouteCalculationStep[]
+  >([]);
+  const [isPlanningAddressEntryActive, setIsPlanningAddressEntryActive] =
+    useState(false);
+  const [isAddingStopsDuringWorkday, setIsAddingStopsDuringWorkday] =
+    useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [routePlanningSessionOpen, setRoutePlanningSessionOpen] = useState(false);
+  const [showSavedRoutesSheet, setShowSavedRoutesSheet] = useState(false);
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  const [dockedSummaryHeight, setDockedSummaryHeight] = useState<number>(
+    PlanningLayout.planningRouteDockEstimatedHeight,
+  );
+  const {
+    endWorkday,
+    isRestoring,
+    isWorkdayActive,
+    permissionDenied,
+    startWorkday,
+  } = useWorkdayTrackerContext();
+  const {
+    current,
+    isLoading,
+    next,
+    refresh,
+    showContinueToNext,
+    storesById,
+    totalCount,
+    visits,
+  } = useTodayRoute();
+  const { locations: myLocations } = useMyLocations();
+  const {
+    backToPlanning,
+    completeCalculation,
+    draft: planningDraft,
+    isLoading: isPlanningLoading,
+    refresh: refreshPlanningDraft,
+    setPhase,
+    updateLocations,
+  } = useRoutePlanning();
+
+  const screenMode = resolveCoordinatorScreenMode({
+    isRestoring,
+    isLoading: isLoading || isPlanningLoading,
+    isWorkdayActive,
+    isEditingRouteDuringWorkday: isAddingStopsDuringWorkday,
+    visits,
+    planningPhase: planningDraft.phase,
+  });
+
+  const showRouteEntryLauncher = shouldShowRouteEntryLauncher({
+    isAddingStopsDuringWorkday,
+    isLoading: isLoading || isPlanningLoading,
+    isRestoring,
+    isWorkdayActive,
+    planningPhase: planningDraft.phase,
+    routePlanningSessionOpen,
+    visits,
+  });
+
+  const showRoutePlanningCanvas =
+    !showRouteEntryLauncher &&
+    (screenMode === 'planning' || isAddingStopsDuringWorkday);
+
+  const showBuildRoutePlanningShell =
+    showRoutePlanningCanvas &&
+    planningDraft.phase === 'planning' &&
+    !isWorkdayActive;
+
+  const previousBuildRouteVisitCountRef = useRef(visits.length);
+
+  useEffect(() => {
+    const previousCount = previousBuildRouteVisitCountRef.current;
+    previousBuildRouteVisitCountRef.current = visits.length;
+
+    if (!showBuildRoutePlanningShell || visits.length <= previousCount) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      if (!buildRouteAddStopAnchorRef.current || !scrollContentRef.current) {
+        return;
+      }
+
+      buildRouteAddStopAnchorRef.current.measureLayout(
+        scrollContentRef.current,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({
+            animated: true,
+            y: Math.max(0, y - 16),
+          });
+        },
+        () => {},
+      );
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [showBuildRoutePlanningShell, visits.length]);
+
+  useEffect(() => {
+    const hideTabs = screenMode === 'briefing';
+
+    setPreWorkdayTabBarHidden(hideTabs);
+  }, [screenMode, setPreWorkdayTabBarHidden]);
+
+  useEffect(() => {
+    return subscribeDevResetHome(() => {
+      setRoutePlanningSessionOpen(false);
+      setIsAddingStopsDuringWorkday(false);
+      setIsCalculatingRoute(false);
+      setCalculationError(null);
+      setActiveCalculationStep(null);
+      setCompletedCalculationSteps([]);
+      dismissRouteCompletePhase();
+      scrollRef.current?.scrollTo({ animated: false, y: 0 });
+      void refresh();
+      void refreshPlanningDraft();
+    });
+  }, [
+    dismissRouteCompletePhase,
+    refresh,
+    refreshPlanningDraft,
+  ]);
+
+  useEffect(() => {
+    if (showRouteEntryLauncher) {
+      setRoutePlanningSessionOpen(false);
+    }
+  }, [showRouteEntryLauncher]);
+
+  useEffect(() => {
+    if (hasVisitStops(visits)) {
+      setRoutePlanningSessionOpen(true);
+    }
+  }, [visits]);
+
+  useEffect(() => {
+    if (!showRouteEntryLauncher || isWorkdayActive) {
+      return;
+    }
+
+    if (planningDraft.phase === 'briefing') {
+      void backToPlanning().then(() => refreshPlanningDraft());
+    }
+  }, [
+    backToPlanning,
+    isWorkdayActive,
+    planningDraft.phase,
+    refreshPlanningDraft,
+    showRouteEntryLauncher,
+  ]);
+
+  const endLocation = useMemo(
+    () => getEffectiveEndLocation(planningDraft),
+    [planningDraft],
+  );
+
+  const endStore = useMemo(() => {
+    if (!endLocation) {
+      return null;
+    }
+
+    return (
+      Object.values(storesById).find(
+        (store) =>
+          store.latitude === endLocation.latitude &&
+          store.longitude === endLocation.longitude,
+      ) ?? null
+    );
+  }, [endLocation, storesById]);
+
+  const dynamicEstimatedFinishAt = useDynamicEstimatedFinishAt({
+    enabled: screenMode === 'active_workday',
+    visits,
+    storesById,
+    currentVisit: current?.visit ?? null,
+    endStore,
+  });
+
+  const briefingSummary = useMemo(
+    () =>
+      buildDailyBriefingSummary({
+        draft: planningDraft,
+        visits,
+        storesById,
+        dateHeading: formatTodayHeading(),
+      }),
+    [planningDraft, storesById, visits],
+  );
+
+  const briefingPresentation = useMemo(() => {
+    if (!briefingSummary) {
+      return null;
+    }
+
+    return buildBriefingPresentation({
+      draft: planningDraft,
+      visits,
+      storesById,
+      summary: briefingSummary,
+    });
+  }, [briefingSummary, planningDraft, storesById, visits]);
+
+  const horizontalPadding = showRouteEntryLauncher
+    ? HomeLayout.screenPaddingHorizontal
+    : screenMode === 'planning' || isAddingStopsDuringWorkday
+      ? Math.max(20, width * 0.05)
+      : Math.max(AppSpacing.screenPaddingMin, width * AppSpacing.screenPaddingRatio);
+  const contentMaxWidth = showRouteEntryLauncher
+    ? width - HomeLayout.screenPaddingHorizontal * 2
+    : screenMode === 'planning' || isAddingStopsDuringWorkday
+      ? width - horizontalPadding * 2
+      : Math.min(width - horizontalPadding * 2, 420);
+
+  const handleCalculateRoute = () => {
+    if (isCalculatingRoute) {
+      return;
+    }
+
+    const editingRouteDuringWorkday = isWorkdayActive && isAddingStopsDuringWorkday;
+
+    if (isWorkdayActive && !editingRouteDuringWorkday) {
+      return;
+    }
+
+    const endLocation = getEffectiveEndLocation(planningDraft);
+
+    if (!planningDraft.startLocation || !endLocation) {
+      return;
+    }
+
+    setIsCalculatingRoute(true);
+    setCalculationError(null);
+    setCompletedCalculationSteps([]);
+    setActiveCalculationStep('loading_stops');
+
+    void (async () => {
+      try {
+        await setPhase('calculating');
+
+        const result = await calculateTodayRoute({
+          startLocation: planningDraft.startLocation!,
+          endLocation,
+          onProgress: (progress) => {
+            setActiveCalculationStep(progress.step);
+            setCompletedCalculationSteps(progress.completedSteps);
+          },
+        });
+
+        if (!result.ok) {
+          setCalculationError(result.message);
+          await setPhase('planning');
+          return;
+        }
+
+        await completeCalculation({
+          estimate: result.estimate,
+          startLocation: result.startLocation,
+          endLocation: result.endLocation,
+          returnToStart: planningDraft.returnToStart,
+          drivingPolyline: result.drivingPolyline,
+        });
+        await refresh();
+        await refreshPlanningDraft();
+
+        if (editingRouteDuringWorkday) {
+          setIsAddingStopsDuringWorkday(false);
+          requestRouteRefresh();
+        }
+      } catch (error) {
+        console.error('[TodayScreen] calculate route failed:', error);
+        setCalculationError('Route calculation failed. Try again.');
+        await setPhase('planning');
+      } finally {
+        setIsCalculatingRoute(false);
+        setActiveCalculationStep(null);
+      }
+    })();
+  };
+
+  const beginTodayRouteNavigation = useCallback(async () => {
+    if (isRestoring) {
+      return;
+    }
+
+    await startTodayRoute();
+    await refreshWorkdayCoordinatorFromPersistence({
+      action: 'startRoute',
+      completionPhase: 'idle',
+    });
+    requestRouteRefresh();
+    await refresh();
+  }, [isRestoring, refresh, requestRouteRefresh]);
+
+  const handleStartDay = () => {
+    if (isRestoring || isStartingDay || isWorkdayActive) {
+      return;
+    }
+
+    setIsStartingDay(true);
+    setStartDayError(null);
+
+    void (async () => {
+      try {
+        const prepared = await prepareStartDayLocationRequirements();
+
+        if (!prepared.ok) {
+          setStartDayError(prepared.message);
+          return;
+        }
+
+        await syncPlanningDraftToTodayRouteSelection(planningDraft);
+        await startWorkday();
+
+        const activeTrip = await getActiveTrip();
+
+        if (activeTrip?.id) {
+          const routeContext = await buildActiveRouteContextFromPlanningDraft(planningDraft);
+
+          await saveActiveTrip({
+            ...activeTrip,
+            routeContext,
+          });
+          await attachTripIdToTodayVisits(activeTrip.id);
+        }
+
+        await prepareVisitsForWorkdayRoutePlanning();
+        await refreshWorkdayCoordinatorFromPersistence({
+          action: 'startWorkday',
+          completionPhase: 'idle',
+        });
+        await refresh();
+        await beginTodayRouteNavigation();
+      } catch (error: unknown) {
+        console.error('[TodayScreen] start day failed:', error);
+      } finally {
+        setIsStartingDay(false);
+      }
+    })();
+  };
+
+  const showRouteComplete =
+    isWorkdayActive && visitCompletionPhase === 'all_complete';
+
+  const handleEndWorkday = () => {
+    if (isRestoring || isFinishingWorkday) {
+      return;
+    }
+
+    setIsFinishingWorkday(true);
+    setFinishWorkdayError(null);
+
+    void (async () => {
+      try {
+        await endWorkday();
+        const stillActive = await getActiveTrip();
+
+        if (stillActive) {
+          setFinishWorkdayError(
+            'Could not finish the workday. Check your connection and try again.',
+          );
+          return;
+        }
+
+        await clearRouteSessionTimingForToday();
+        dismissRouteCompletePhase();
+        await refresh();
+        router.navigate('/' as const);
+      } catch (error: unknown) {
+        console.error('[TodayScreen] end workday failed:', error);
+        setFinishWorkdayError(
+          'Could not finish the workday. Check your connection and try again.',
+        );
+      } finally {
+        setIsFinishingWorkday(false);
+      }
+    })();
+  };
+
+  const handleStartRoute = () => {
+    if (isRestoring) {
+      return;
+    }
+
+    void beginTodayRouteNavigation().catch((error: unknown) => {
+      console.error('[TodayScreen] start route failed:', error);
+    });
+  };
+
+  const routeStarted = useMemo(() => isTodayRouteStarted(visits), [visits]);
+
+  const activeWorkdayHorizontalPadding = Math.max(16, Math.round(width * 0.04));
+
+  const autoStartRouteAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isWorkdayActive) {
+      autoStartRouteAttemptedRef.current = false;
+    }
+  }, [isWorkdayActive]);
+
+  useEffect(() => {
+    if (screenMode !== 'active_workday' || routeStarted || isRestoring || showRouteComplete) {
+      return;
+    }
+
+    if (!hasVisitStops(visits)) {
+      if (!isAddingStopsDuringWorkday) {
+        setIsAddingStopsDuringWorkday(true);
+      }
+      return;
+    }
+
+    if (autoStartRouteAttemptedRef.current) {
+      return;
+    }
+
+    autoStartRouteAttemptedRef.current = true;
+
+    void beginTodayRouteNavigation().catch((error: unknown) => {
+      console.error('[TodayScreen] auto start route failed:', error);
+      autoStartRouteAttemptedRef.current = false;
+    });
+  }, [
+    beginTodayRouteNavigation,
+    isAddingStopsDuringWorkday,
+    isRestoring,
+    routeStarted,
+    screenMode,
+    showRouteComplete,
+    visits.length,
+  ]);
+
+  const handleRestartRoute = () => {
+    if (isRestoring) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const sorted = [...visits].sort(
+          (left, right) => left.routeOrder - right.routeOrder,
+        );
+
+        if (sorted.length === 0) {
+          return;
+        }
+
+        const now = Date.now();
+        const resetVisits: StoreVisit[] = sorted.map((visit, index) => ({
+          ...visit,
+          status: index === 0 ? 'current' : 'pending',
+          checkedInAt: undefined,
+          checkInSource: undefined,
+          automaticCheckInAt: undefined,
+          completedAt: undefined,
+          updatedAt: now,
+        }));
+
+        await replaceTodayVisits(resetVisits);
+        await clearPendingVisitAdvancement();
+        await refreshWorkdayCoordinatorFromPersistence({
+          action: 'restartRoute',
+          completionPhase: 'idle',
+        });
+        requestRouteRefresh();
+        await refresh();
+      } catch (error: unknown) {
+        console.error('[TodayScreen] restart route failed:', error);
+      }
+    })();
+  };
+
+  const handleAddStopsDuringWorkday = useCallback(() => {
+    if (isRestoring) {
+      return;
+    }
+
+    setIsAddingStopsDuringWorkday(true);
+    void backToPlanning()
+      .then(() => refreshPlanningDraft())
+      .catch((error: unknown) => {
+        console.error('[TodayScreen] add stops failed:', error);
+      });
+  }, [backToPlanning, isRestoring, refreshPlanningDraft]);
+
+  const handleAddStopForStore = useCallback(
+    (storeId: string) => {
+      Alert.alert(
+        'Add stop',
+        'Open Build Route to add this store to today\u2019s route.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add stops', onPress: () => handleAddStopsDuringWorkday() },
+          {
+            text: 'View store',
+            onPress: () => {
+              router.push(`/store/${storeId}`);
+            },
+          },
+        ],
+      );
+    },
+    [handleAddStopsDuringWorkday, router],
+  );
+
+  const handleScrollActiveWorkdayToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+
+  const handleClearRoute = () => {
+    if (isRestoring) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        await clearTodayRouteStops();
+        await clearPendingVisitAdvancement();
+        await clearRouteSessionTimingForToday();
+        dismissRouteCompletePhase();
+        await refreshWorkdayCoordinatorFromPersistence({
+          action: 'clearRoute',
+          completionPhase: 'idle',
+        });
+        requestRouteRefresh();
+        await refresh();
+        await refreshPlanningDraft();
+
+        if (isWorkdayActive) {
+          await backToPlanning();
+        }
+      } catch (error: unknown) {
+        console.error('[TodayScreen] clear route failed:', error);
+      }
+    })();
+  };
+
+  const routeEditOptions = useMemo(
+    () => ({
+      completionPhase: visitCompletionPhase,
+      duringActiveWorkday: isWorkdayActive,
+    }),
+    [isWorkdayActive, visitCompletionPhase],
+  );
+
+  const handleRemoveStopFromRoute = (visitId: string, stopName: string) => {
+    Alert.alert(
+      'Remove stop?',
+      `Remove ${stopName} from today's route? The store stays in your library.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void applyRemoveFromToday(visitId, {
+              ...routeEditOptions,
+              visits,
+            })
+              .then((removed) => {
+                if (removed) {
+                  requestRouteRefresh();
+                }
+              })
+              .catch((error: unknown) => {
+                console.error('[TodayScreen] remove stop failed:', error);
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  const handleReorderRoute = (orderedVisitIds: string[]) => {
+    void applyRouteReorder(orderedVisitIds, routeEditOptions)
+      .then(() => requestRouteRefresh())
+      .catch((error: unknown) => {
+        console.error('[TodayScreen] reorder route failed:', error);
+      });
+  };
+
+  const handleMakeNextStop = (visitId: string) => {
+    void applyMakeNext(visits, visitId, routeEditOptions)
+      .then(() => requestRouteRefresh())
+      .catch((error: unknown) => {
+        console.error('[TodayScreen] make next failed:', error);
+      });
+  };
+
+  const handleMakeFirstStop = (visitId: string) => {
+    void applyMakeFirst(visits, visitId, routeEditOptions)
+      .then((applied) => {
+        if (applied) {
+          requestRouteRefresh();
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('[TodayScreen] make first failed:', error);
+      });
+  };
+
+  const handleUndoCheckIn = (visitId: string) => {
+    if (isRestoring) {
+      return;
+    }
+
+    Alert.alert(
+      'Undo check-in?',
+      'This stop will return to pending and the visit timer will clear.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo check-in',
+          style: 'destructive',
+          onPress: () => {
+            void undoActiveCheckIn(visitId)
+              .then(() => requestRouteRefresh())
+              .catch((error: unknown) => {
+                console.error('[TodayScreen] undo check-in failed:', error);
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  const handleOpenStore = (storeId: string) => {
+    const openTarget = visits
+      .map((visit) => ({
+        visit,
+        store: storesById[visit.storeId],
+      }))
+      .find((entry) => entry.store?.id === storeId);
+
+    if (!openTarget?.store) {
+      router.push(`/store/${storeId}`);
+      return;
+    }
+
+    void (async () => {
+      try {
+        if (openTarget.visit.status === 'current') {
+          await checkInVisit(openTarget.visit.id);
+          await refresh();
+        }
+
+        router.push(`/store/${storeId}`);
+      } catch (error) {
+        console.error('[TodayScreen] open store failed:', error);
+      }
+    })();
+  };
+
+  const finishedCount = countFinishedVisits(visits);
+
+  const showLoading = screenMode === 'loading' && !showRouteEntryLauncher;
+  const planningSummary = usePlanningRouteSummary({
+    draft: planningDraft,
+    isCalculating: isCalculatingRoute,
+    storesById,
+    visits,
+  });
+  const showPlanningRouteDock = shouldShowPlanningRouteDock({
+    screenMode: showRoutePlanningCanvas ? 'planning' : screenMode,
+    hasStops: planningSummary.hasStops,
+    isCalculatingRoute,
+    isAddressEntryActive: isPlanningAddressEntryActive,
+    isKeyboardVisible,
+  });
+  const planningDockVisible =
+    ROUTE_PLANNING_DOCK_UI_ENABLED && showPlanningRouteDock;
+  const planningScrollPaddingBottom = planningDockVisible
+    ? dockedSummaryHeight +
+      PlanningLayout.scrollClearanceExtra +
+      (navigationMode === 'workday' ? workdayDockTotalHeight(insets.bottom) : 0)
+    : PlanningLayout.scrollClearanceExtra;
+
+  const workdayScrollPaddingBottom =
+    navigationMode === 'workday'
+      ? insets.bottom +
+        AppSpacing.tabBarContentHeight +
+        PlanningLayout.scrollClearanceExtra +
+        72
+      : PlanningLayout.scrollClearanceExtra;
+
+  useEffect(() => {
+    registerHandlers({
+      onAddStop: handleAddStopsDuringWorkday,
+      onEditRoute: enterRouteEdit,
+    });
+  }, [enterRouteEdit, handleAddStopsDuringWorkday, registerHandlers]);
+
+  useEffect(() => {
+    if (!focusScrollTarget) {
+      return;
+    }
+
+    if (focusScrollTarget === 'current-stop') {
+      scrollRef.current?.scrollTo({ animated: true, y: 0 });
+      requestScrollTo(null);
+      return;
+    }
+
+    if (
+      focusScrollTarget === 'route-map' &&
+      mapSectionRef.current &&
+      scrollContentRef.current
+    ) {
+      mapSectionRef.current.measureLayout(
+        scrollContentRef.current,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({
+            animated: true,
+            y: Math.max(0, y - 12),
+          });
+          requestScrollTo(null);
+        },
+        () => {
+          requestScrollTo(null);
+        },
+      );
+    }
+  }, [focusScrollTarget, requestScrollTo]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleOpenSavedRoutes = () => {
+    void (async () => {
+      try {
+        await ensureDefaultSavedRoutes();
+        setSavedRoutes(await getSavedRoutes());
+        setShowSavedRoutesSheet(true);
+      } catch (error) {
+        console.error('[TodayScreen] load saved routes failed:', error);
+      }
+    })();
+  };
+
+  const handleSelectSavedRoute = (route: SavedRoute) => {
+    void (async () => {
+      try {
+        await applySavedRouteToToday(route);
+        setRoutePlanningSessionOpen(true);
+        await refresh();
+        await refreshPlanningDraft();
+      } catch (error) {
+        console.error('[TodayScreen] apply saved route failed:', error);
+      }
+    })();
+  };
+
+  const returnToRouteLauncher = () => {
+    void (async () => {
+      const clearStops = visits.length > 0;
+
+      try {
+        if (clearStops) {
+          await clearTodayRouteStops();
+          await clearRouteSessionTimingForToday();
+        }
+
+        await backToPlanning();
+        setRoutePlanningSessionOpen(false);
+        await refresh();
+        await refreshPlanningDraft();
+      } catch (error) {
+        console.error('[TodayScreen] return to launcher failed:', error);
+      }
+    })();
+  };
+
+  const handleReturnToRouteLauncherWithConfirm = () => {
+    const clearStops = visits.length > 0;
+
+    Alert.alert(
+      'Back to launcher?',
+      clearStops
+        ? "Today's stops will be removed from the route. Start and finish locations stay saved until you change them in route setup."
+        : 'Return to the route launcher.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Back to launcher',
+          onPress: returnToRouteLauncher,
+        },
+      ],
+    );
+  };
+
+  const showActiveWorkdayRoute =
+    !showLoading &&
+    !showRouteEntryLauncher &&
+    screenMode === 'active_workday' &&
+    !showRouteComplete &&
+    routeStarted;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
+    <SafeAreaView style={styles.container}>
+      <View style={styles.screen}>
+        {showActiveWorkdayRoute ? (
+          <View
+            style={[
+              styles.activeWorkdayShell,
+              {
+                paddingHorizontal: activeWorkdayHorizontalPadding,
+                width: '100%',
+              },
+            ]}
+          >
+            <CoordinatorLiveRouteScreen
+              current={current}
+              dateHeading={formatTodayHeading()}
+              draft={planningDraft}
+              estimatedFinishAt={
+                dynamicEstimatedFinishAt ??
+                planningDraft.estimate?.estimatedFinishAt ??
+                null
+              }
+              isRestoring={isRestoring}
+              isWorkdayActive={isWorkdayActive}
+              liveRouteViewMode={liveRouteViewMode}
+              mapSectionRef={mapSectionRef}
+              next={next}
+              onAddStops={handleAddStopsDuringWorkday}
+              onAddStopForStore={handleAddStopForStore}
+              onClearRoute={handleClearRoute}
+              onContinueToNext={continueToNextStop}
+              onEndWorkday={handleEndWorkday}
+              onMakeFirstStop={handleMakeFirstStop}
+              onMakeNextStop={handleMakeNextStop}
+              onOpenStore={handleOpenStore}
+              onRemoveStop={handleRemoveStopFromRoute}
+              onReorderStops={handleReorderRoute}
+              onRestartRoute={handleRestartRoute}
+              onRouteComplete={enterRouteCompletePhase}
+              onScrollToTop={handleScrollActiveWorkdayToTop}
+              onStartRoute={handleStartRoute}
+              onUndoCheckIn={handleUndoCheckIn}
+              routeStarted={routeStarted}
+              permissionDenied={permissionDenied}
+              showContinueToNext={showContinueToNext}
+              storesById={storesById}
+              totalCount={totalCount}
+              visits={visits}
             />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+          </View>
+        ) : (
+        <>
+        <NestableScrollContainer
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: horizontalPadding },
+            showRouteEntryLauncher
+              ? {
+                  paddingBottom:
+                    insets.bottom + AppSpacing.tabBarContentHeight + AppSpacing.shellBottomPadding,
+                  paddingTop: 8,
+                }
+              : null,
+            screenMode === 'planning' || isAddingStopsDuringWorkday
+              ? [
+                  styles.planningScrollContent,
+                  { paddingBottom: planningScrollPaddingBottom },
+                ]
+              : null,
+            screenMode === 'briefing'
+              ? { paddingBottom: PlanningLayout.scrollClearanceExtra }
+              : null,
+            screenMode === 'active_workday' && !showRouteComplete
+              ? { paddingBottom: workdayScrollPaddingBottom }
+              : null,
+            showRouteComplete ? { paddingBottom: insets.bottom + 16 } : null,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollView}
+        >
+        <View
+          ref={scrollContentRef}
+          style={[styles.content, { maxWidth: contentMaxWidth, width: '100%' }]}
+        >
+          {!showLoading && showRouteEntryLauncher ? (
+            <HomeIdleScreen
+              myLocations={myLocations}
+              planningStartLocation={planningDraft.startLocation}
+              onLoadWorkday={handleOpenSavedRoutes}
+              onNewWorkday={() => {
+                void (async () => {
+                  try {
+                    await clearTodayRouteStops();
+                    await clearRouteSessionTimingForToday();
+                    await clearPendingVisitAdvancement();
+                    await resetRoutePlanningForNewRoute({ myLocations });
+                    setRoutePlanningSessionOpen(true);
+                    await refresh();
+                    await refreshPlanningDraft();
+                  } catch (error) {
+                    console.error('[TodayScreen] prepare new route failed:', error);
+                  }
+                })();
+              }}
+              onOpenProfile={() => {
+                router.push('/profile' as Href);
+              }}
+              onOpenWorkdayHistory={() => {
+                router.push('/history' as const);
+              }}
+            />
+          ) : null}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+          {!showLoading &&
+          !showRouteEntryLauncher &&
+          screenMode !== 'planning' &&
+          screenMode !== 'active_workday' &&
+          screenMode !== 'briefing' ? (
+            <HomeHeader
+              onLongPressTitle={() => {
+                router.push('/diagnostics' as const);
+              }}
+              subtitle={formatTodayHeading()}
+              title="Route"
+            />
+          ) : null}
+
+          {showLoading ? (
+            <View
+              accessibilityLabel="Loading today's workday"
+              accessibilityRole="progressbar"
+              style={styles.loadingContainer}
+            >
+              <ActivityIndicator color={AppColors.blue} size="large" />
+            </View>
+          ) : null}
+
+          {!showLoading &&
+          !showRouteEntryLauncher &&
+          showRoutePlanningCanvas ? (
+            <CoordinatorPlanningScreen
+              addStopAnchorRef={buildRouteAddStopAnchorRef}
+              draft={planningDraft}
+              duringActiveWorkday={isWorkdayActive}
+              myLocations={myLocations}
+              onAddressEntryActiveChange={setIsPlanningAddressEntryActive}
+              onExitActiveRouteEdit={() => {
+                setIsAddingStopsDuringWorkday(false);
+                void refresh();
+              }}
+              onImportStores={() => {
+                router.push('/store-import' as const);
+              }}
+              onLoadSavedRoute={handleOpenSavedRoutes}
+              onRefresh={async () => {
+                await refresh();
+                await refreshPlanningDraft();
+              }}
+              onReturnToLauncher={
+                !isWorkdayActive ? returnToRouteLauncher : undefined
+              }
+              onUpdateLocations={updateLocations}
+              onSetRoute={handleCalculateRoute}
+              routeSetBlockerMessage={planningSummary.blockerMessage}
+              routeSetDisabled={!planningSummary.canCalculate || isCalculatingRoute}
+              isCalculatingRoute={isCalculatingRoute}
+              storesById={storesById}
+              visits={visits}
+            />
+          ) : null}
+
+          {!showLoading &&
+          !showRouteEntryLauncher &&
+          screenMode === 'briefing' &&
+          briefingSummary &&
+          briefingPresentation ? (
+            <WorkdayPreviewScreen
+              draft={planningDraft}
+              isStarting={isStartingDay}
+              onBackToPlanning={() => {
+                void backToPlanning();
+              }}
+              onInsightPress={(row) => {
+                if (row.kind === 'visit_notes') {
+                  router.push('/visit-history' as const);
+                  return;
+                }
+
+                router.push('/(tabs)/stores' as const);
+              }}
+              onOpenStore={handleOpenStore}
+              onStartDay={handleStartDay}
+              permissionDenied={permissionDenied}
+              presentation={briefingPresentation}
+              startDayError={startDayError}
+              storesById={storesById}
+              summary={briefingSummary}
+              visits={visits}
+            />
+          ) : null}
+
+          {!showLoading && !showRouteEntryLauncher && screenMode === 'completed_day' ? (
+            <WorkdayCompleteCard
+              completedCount={finishedCount}
+              totalCount={totalCount}
+            />
+          ) : null}
+
+          {!showLoading &&
+          !showRouteEntryLauncher &&
+          screenMode === 'active_workday' &&
+          showRouteComplete ? (
+            <RouteCompleteScreen
+              key={routeCompleteCelebrationKey}
+              finishError={finishWorkdayError}
+              isFinishing={isFinishingWorkday}
+              onFinishWorkday={handleEndWorkday}
+              onOpenStore={handleOpenStore}
+            />
+          ) : null}
+
+          {!showLoading &&
+          !showRouteEntryLauncher &&
+          screenMode === 'active_workday' &&
+          !showRouteComplete &&
+          !routeStarted &&
+          hasVisitStops(visits) ? (
+            <View
+              accessibilityLabel="Starting route"
+              accessibilityRole="progressbar"
+              style={styles.loadingContainer}
+            >
+              <ActivityIndicator color={AppColors.blue} size="large" />
+            </View>
+          ) : null}
+        </View>
+        </NestableScrollContainer>
+
+        {planningDockVisible ? (
+          <PlanningRouteDock
+            blockerMessage={planningSummary.blockerMessage}
+            bottomInset={
+              navigationMode === 'workday' ? workdayDockTotalHeight(insets.bottom) : 0
+            }
+            distanceLabel={planningSummary.distanceLabel}
+            onLayout={setDockedSummaryHeight}
+            onPrimaryPress={handleCalculateRoute}
+            primaryDisabled={!planningSummary.canCalculate}
+            primaryLabel="Set Route"
+            stopsLabel={planningSummary.stopsLabel}
+            timeLabel={planningSummary.timeLabel}
+            visible={showPlanningRouteDock}
+          />
+        ) : null}
+        </>
+        )}
+      </View>
+
+      <RouteCalculationTransition
+        activeStep={activeCalculationStep}
+        completedSteps={completedCalculationSteps}
+        errorMessage={calculationError}
+        onRetry={calculationError ? handleCalculateRoute : undefined}
+        visible={
+          !showRouteEntryLauncher &&
+          (screenMode === 'calculating' || isCalculatingRoute)
+        }
+      />
+
+      <SavedRoutesSheet
+        onClose={() => {
+          setShowSavedRoutesSheet(false);
+        }}
+        onSelectRoute={handleSelectSavedRoute}
+        routes={savedRoutes}
+        visible={showSavedRoutesSheet}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    backgroundColor: AppColors.background,
+    flex: 1,
+  },
+  screen: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
+    paddingTop: 12,
+  },
+  planningScrollContent: {
+    paddingTop: 8,
+  },
+  content: {
+    alignSelf: 'center',
+    gap: AppSpacing.sectionGap,
+  },
+  activeWorkdayShell: {
+    alignSelf: 'stretch',
+    flex: 1,
+    gap: 0,
+    maxWidth: '100%',
+  },
+  loadingContainer: {
     alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+    paddingVertical: 48,
   },
 });

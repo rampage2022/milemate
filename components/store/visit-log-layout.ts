@@ -1,0 +1,20 @@
+/** Layout tokens for Visit Log (approved mock 5a). */
+export const VisitLogLayout = {
+  headerTitleSize: 17,
+  storeNameSize: 20,
+  storeAddressSize: 14,
+  sectionPromptSize: 15,
+  detailLabelSize: 13,
+  detailValueSize: 16,
+  actionTitleSize: 16,
+  actionMetaSize: 13,
+  footerCaptionSize: 12,
+  contentPaddingH: 20,
+  contentGap: 16,
+  detailRowMinHeight: 52,
+  actionGridGap: 10,
+  actionTileMinHeight: 88,
+  finishButtonHeight: 52,
+  iconCircleSize: 36,
+  iconCircleSizeSm: 32,
+} as const;
