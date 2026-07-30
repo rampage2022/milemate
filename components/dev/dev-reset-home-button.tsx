@@ -2,11 +2,14 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppColors } from '@/components/shared/app-theme';
+import { AppColors, AppSpacing } from '@/components/shared/app-theme';
+import { useRouteEditSession } from '@/contexts/route-edit-session-context';
 import { useWorkdayNavigation } from '@/contexts/workday-navigation-context';
 import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
 import { devResetToHomePersistence } from '@/services/dev-reset-to-home';
 import { notifyDevResetHome } from '@/utils/dev-reset-home-signal';
+
+import { ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT } from '@/components/coordinator/active-workday-reorder-layout';
 
 export function DevResetHomeButton() {
   if (typeof __DEV__ === 'undefined' || !__DEV__) {
@@ -19,6 +22,7 @@ export function DevResetHomeButton() {
 function DevResetHomeButtonInner() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isRouteEditMode } = useRouteEditSession();
   const { endWorkday } = useWorkdayTrackerContext();
   const { setPreWorkdayTabBarHidden } = useWorkdayNavigation();
 
@@ -50,11 +54,22 @@ function DevResetHomeButtonInner() {
     );
   }
 
+  const hostStyle = isRouteEditMode
+    ? {
+        bottom:
+          insets.bottom +
+          AppSpacing.tabBarContentHeight +
+          ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT +
+          8,
+        right: insets.right + 8,
+      }
+    : {
+        left: insets.left + 8,
+        top: insets.top + 8,
+      };
+
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.host, { left: insets.left + 8, top: insets.top + 8 }]}
-    >
+    <View pointerEvents="box-none" style={[styles.host, hostStyle]}>
       <Pressable
         accessibilityLabel="Developer reset to home launcher"
         accessibilityRole="button"

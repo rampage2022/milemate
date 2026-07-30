@@ -1,16 +1,17 @@
 import { useMemo, useRef, type RefObject } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NestableScrollContainer } from 'react-native-draggable-flatlist';
+import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  ActiveWorkdayReorderScreen,
+  ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT,
+} from '@/components/coordinator/active-workday-reorder-screen';
 import {
   ActiveWorkdayBottomBar,
   activeWorkdayActionBarBottomPadding,
   activeWorkdayBottomScrollInset,
 } from '@/components/coordinator/active-workday-bottom-bar';
 import { ActiveWorkdayScreen } from '@/components/coordinator/active-workday-screen';
-import { LiveRouteLayout } from '@/components/coordinator/live-route-layout';
-import { StopsRouteEditPanel } from '@/components/stops/stops-route-edit-panel';
 import { AppColors, AppSpacing } from '@/components/shared/app-theme';
 import { useRouteEditSession } from '@/contexts/route-edit-session-context';
 import { useWorkdayNavigation } from '@/contexts/workday-navigation-context';
@@ -144,7 +145,7 @@ export function CoordinatorLiveRouteScreen({
     tabBarContentHeight: AppSpacing.tabBarContentHeight,
     tabBarVisible,
   });
-  const editScrollPaddingBottom = tabBarVisible ? 16 : insets.bottom + 16;
+  const reorderScrollPaddingBottom = ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT + 16;
 
   const activeMapHeight = Math.round(
     Math.min(Math.max(windowHeight * 0.32, 220), 300),
@@ -197,24 +198,18 @@ export function CoordinatorLiveRouteScreen({
   return (
     <View collapsable={false} ref={mapSectionRef} style={styles.shell}>
       {isRouteEditMode ? (
-        <NestableScrollContainer
-          contentContainerStyle={{ paddingBottom: editScrollPaddingBottom }}
-          showsVerticalScrollIndicator={false}
-          style={styles.editScroll}
-        >
-          <StopsRouteEditPanel
-            currentVisitId={activeStopVisitId}
-            draft={draft}
-            onPressStop={onOpenStore}
-            onRemove={onRemoveStop}
-            onReorder={onReorderStops}
-            storesById={storesById}
-            visits={visits}
-          />
-          <Pressable accessibilityRole="button" onPress={exitRouteEdit}>
-            <Text style={styles.doneEdit}>Done reordering</Text>
-          </Pressable>
-        </NestableScrollContainer>
+        <ActiveWorkdayReorderScreen
+          bottomInset={actionBarBottomPadding}
+          currentVisitId={activeStopVisitId}
+          draft={draft}
+          onDone={exitRouteEdit}
+          onPressStop={onOpenStore}
+          onRemoveStop={onRemoveStop}
+          onReorderStops={onReorderStops}
+          scrollPaddingBottom={reorderScrollPaddingBottom}
+          storesById={storesById}
+          visits={visits}
+        />
       ) : (
         <>
           <ActiveWorkdayScreen
@@ -270,22 +265,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
-  editScroll: {
-    flex: 1,
-  },
-  container: {
-    gap: LiveRouteLayout.sectionGap,
-    width: '100%',
-  },
   error: {
     color: AppColors.red,
     fontSize: 15,
-    textAlign: 'center',
-  },
-  doneEdit: {
-    color: AppColors.blue,
-    fontSize: 16,
-    fontWeight: '800',
     textAlign: 'center',
   },
 });

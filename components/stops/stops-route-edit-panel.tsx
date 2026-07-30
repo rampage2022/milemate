@@ -13,11 +13,17 @@ import {
   formatPlanningStopAddressLine,
   formatPlanningStopDisplay,
 } from '@/components/coordinator/planning-address-display';
+import { ActiveWorkdayReorderLayout } from '@/components/coordinator/active-workday-reorder-layout';
 import { LiveRouteLayout } from '@/components/coordinator/live-route-layout';
 import { PlanningLayout } from '@/components/coordinator/planning-layout';
 import { RouteEndpointCard } from '@/components/coordinator/route-endpoint-card';
+import { ActiveWorkdayRouteAnchorCard } from '@/components/coordinator/active-workday-route-anchor-card';
 import { RouteEditLockedRow } from '@/components/stops/route-edit-locked-row';
 import { RouteEditPendingRow } from '@/components/stops/route-edit-pending-row';
+import {
+  ActiveWorkdayReorderStopRow,
+  isVisitCurrentForReorder,
+} from '@/components/stops/active-workday-reorder-stop-row';
 import { CompletedStopCard } from '@/components/stops/completed-stop-card';
 import { closeAllSwipeActions, SwipeActionRow } from '@/components/shared/swipe-action-row';
 import { AppColors } from '@/components/shared/app-theme';
@@ -85,6 +91,7 @@ type StopsRouteEditPanelProps = {
   onPressStop: (storeId: string) => void;
   onRemove: (visitId: string, stopName: string) => void;
   onReorder: (orderedVisitIds: string[]) => void;
+  presentation?: 'default' | 'activeWorkday';
   storesById: Record<string, Store>;
   visits: StoreVisit[];
 };
@@ -96,10 +103,13 @@ export function StopsRouteEditPanel({
   onPressStop,
   onRemove,
   onReorder,
+  presentation = 'default',
   storesById,
   visits,
 }: StopsRouteEditPanelProps) {
   useGestureInteractionCleanup('Today/StopsEdit');
+
+  const isActiveWorkdayPresentation = presentation === 'activeWorkday';
 
   const startLocation = useMemo(() => getStartLocation(draft), [draft]);
   const finishLocation = useMemo(() => getFinishLocation(draft), [draft]);
@@ -199,6 +209,7 @@ export function StopsRouteEditPanel({
 
       return (
         <CompletedStopCard
+          compact={isActiveWorkdayPresentation}
           key={visit.id}
           onPress={() => {
             handleOpenStore(store.id);
@@ -230,7 +241,12 @@ export function StopsRouteEditPanel({
     return (
       <View
         accessibilityLabel={`Drop zone for ${name}`}
-        style={styles.dragPlaceholder}
+        style={[
+          styles.dragPlaceholder,
+          isActiveWorkdayPresentation
+            ? styles.dragPlaceholderActiveWorkday
+            : styles.dragPlaceholderDefault,
+        ]}
       />
     );
   }
@@ -247,7 +263,7 @@ export function StopsRouteEditPanel({
         actionBorderRadius={PlanningLayout.cardRadius}
         enabled={!isDragging && canRemove}
         rowId={visit.id}
-        rowSpacing={LiveRouteLayout.stopGap}
+        rowSpacing={isActiveWorkdayPresentation ? ActiveWorkdayReorderLayout.rowGap : LiveRouteLayout.stopGap}
         rightAction={{
           accessibilityLabel: `Remove ${name} from route`,
           backgroundColor: AppColors.red,
@@ -259,25 +275,49 @@ export function StopsRouteEditPanel({
       >
         <OpacityDecorator activeOpacity={0.96}>
           <ScaleDecorator activeScale={1.01}>
-            <RouteEditPendingRow
-              addressLine={addressLine}
-              delayLongPress={LONG_PRESS_DELAY_MS}
-              isActive={isActive}
-              isNextInRoute={visit.id === nextPendingVisitId}
-              onLongPress={
-                canDrag && !isActive
-                  ? () => {
-                      closeAllSwipeActions();
-                      drag();
-                    }
-                  : undefined
-              }
-              onPress={() => {
-                handleOpenStore(store.id);
-              }}
-              stopNumber={visit.routeOrder}
-              storeName={name}
-            />
+            {isActiveWorkdayPresentation ? (
+              <ActiveWorkdayReorderStopRow
+                addressLine={addressLine}
+                delayLongPress={LONG_PRESS_DELAY_MS}
+                isActive={isActive}
+                isCurrentStop={isVisitCurrentForReorder(visit, currentVisitId)}
+                isNextInRoute={visit.id === nextPendingVisitId}
+                isSkipped={visit.status === 'skipped'}
+                onLongPress={
+                  canDrag && !isActive
+                    ? () => {
+                        closeAllSwipeActions();
+                        drag();
+                      }
+                    : undefined
+                }
+                onPress={() => {
+                  handleOpenStore(store.id);
+                }}
+                stopNumber={visit.routeOrder}
+                storeName={name}
+              />
+            ) : (
+              <RouteEditPendingRow
+                addressLine={addressLine}
+                delayLongPress={LONG_PRESS_DELAY_MS}
+                isActive={isActive}
+                isNextInRoute={visit.id === nextPendingVisitId}
+                onLongPress={
+                  canDrag && !isActive
+                    ? () => {
+                        closeAllSwipeActions();
+                        drag();
+                      }
+                    : undefined
+                }
+                onPress={() => {
+                  handleOpenStore(store.id);
+                }}
+                stopNumber={visit.routeOrder}
+                storeName={name}
+              />
+            )}
           </ScaleDecorator>
         </OpacityDecorator>
       </SwipeActionRow>
@@ -285,20 +325,30 @@ export function StopsRouteEditPanel({
   }
 
   return (
-    <View style={styles.container}>
-      <RouteEndpointCard kind="start" location={startLocation} locked />
+    <View style={[styles.container, isActiveWorkdayPresentation && styles.containerActiveWorkday]}>
+      {isActiveWorkdayPresentation ? (
+        <ActiveWorkdayRouteAnchorCard kind="start" location={startLocation} />
+      ) : (
+        <RouteEndpointCard kind="start" location={startLocation} locked />
+      )}
 
       {lockedRows.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Completed</Text>
+        <View style={[styles.section, isActiveWorkdayPresentation && styles.sectionActiveWorkday]}>
+          <Text style={[styles.sectionLabel, isActiveWorkdayPresentation && styles.sectionLabelActiveWorkday]}>
+            Completed
+          </Text>
           {lockedRows.map((row) => renderLockedRow(row))}
         </View>
       ) : null}
 
       {editableRows.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Reorder stops</Text>
-          <Text style={styles.sectionHint}>Drag to reorder — completed stops stay fixed</Text>
+        <View style={[styles.section, isActiveWorkdayPresentation && styles.sectionActiveWorkday]}>
+          {!isActiveWorkdayPresentation ? (
+            <>
+              <Text style={styles.sectionLabel}>Reorder stops</Text>
+              <Text style={styles.sectionHint}>Drag to reorder — completed stops stay fixed</Text>
+            </>
+          ) : null}
           <NestableDraggableFlatList
             activationDistance={20}
             animationConfig={STOPS_EDIT_DRAG_ANIMATION_CONFIG}
@@ -333,7 +383,11 @@ export function StopsRouteEditPanel({
         <Text style={styles.emptyPending}>No stops to reorder.</Text>
       )}
 
-      <RouteEndpointCard kind="finish" location={finishLocation} locked />
+      {isActiveWorkdayPresentation ? (
+        <ActiveWorkdayRouteAnchorCard kind="finish" location={finishLocation} />
+      ) : (
+        <RouteEndpointCard kind="finish" location={finishLocation} locked />
+      )}
     </View>
   );
 }
@@ -343,9 +397,15 @@ const styles = StyleSheet.create({
     gap: LiveRouteLayout.headerToStopsGap,
     width: '100%',
   },
+  containerActiveWorkday: {
+    gap: ActiveWorkdayReorderLayout.sectionGap,
+  },
   section: {
     gap: 8,
     width: '100%',
+  },
+  sectionActiveWorkday: {
+    gap: 6,
   },
   sectionLabel: {
     color: AppColors.textMuted,
@@ -353,6 +413,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+  },
+  sectionLabelActiveWorkday: {
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
   sectionHint: {
     color: AppColors.textSecondary,
@@ -373,11 +437,17 @@ const styles = StyleSheet.create({
   dragPlaceholder: {
     backgroundColor: 'rgba(37, 99, 235, 0.06)',
     borderColor: 'rgba(37, 99, 235, 0.28)',
-    borderRadius: PlanningLayout.cardRadius,
     borderStyle: 'dashed',
     borderWidth: 1.5,
     flex: 1,
-    minHeight: 56,
     width: '100%',
+  },
+  dragPlaceholderDefault: {
+    borderRadius: PlanningLayout.cardRadius,
+    minHeight: 56,
+  },
+  dragPlaceholderActiveWorkday: {
+    borderRadius: 14,
+    minHeight: ActiveWorkdayReorderLayout.stopRowMinHeight,
   },
 });

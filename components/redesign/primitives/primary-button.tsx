@@ -9,6 +9,7 @@ type PrimaryButtonProps = {
   icon?: keyof typeof Ionicons.glyphMap;
   label: string;
   loading?: boolean;
+  minHeight?: number;
   onPress: () => void;
   variant?: 'primary' | 'secondary';
 };
@@ -19,6 +20,7 @@ export function PrimaryButton({
   icon,
   label,
   loading,
+  minHeight,
   onPress,
   variant = 'primary',
 }: PrimaryButtonProps) {
@@ -33,6 +35,7 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        minHeight !== undefined && { minHeight },
         variant === 'secondary' && styles.secondary,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
