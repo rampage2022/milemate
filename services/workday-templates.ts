@@ -22,6 +22,10 @@ import {
   type ResolvedWorkdayTemplateStop,
 } from '@/utils/workday-template-utils';
 import { normalizeWorkdayTemplatesCatalog } from '@/utils/normalize-workday-template';
+import {
+  ensureWorkdayTemplatesStoreLinksReconciled,
+  reconcileWorkdayTemplateStopsForPersist,
+} from '@/services/reconcile-workday-template-stores';
 
 export const WORKDAY_TEMPLATES_STORAGE_KEY = '@milemate/workday-templates';
 
@@ -102,13 +106,25 @@ async function readWorkdayTemplatesRaw(): Promise<WorkdayTemplate[]> {
 
 async function readWorkdayTemplates(): Promise<WorkdayTemplate[]> {
   const raw = await readWorkdayTemplatesRaw();
-  const { changed, templates } = normalizeWorkdayTemplatesCatalog(raw);
+  const { changed: normalizedChanged, templates: normalized } =
+    normalizeWorkdayTemplatesCatalog(raw);
+  const reconcileResult = await ensureWorkdayTemplatesStoreLinksReconciled(normalized);
 
-  if (changed) {
-    await writeWorkdayTemplates(templates);
+  if (normalizedChanged || reconcileResult.templatesChanged) {
+    await writeWorkdayTemplates(reconcileResult.templates);
   }
 
-  return templates;
+  return reconcileResult.templates;
+}
+
+export async function reconcilePersistedWorkdayTemplateCatalog(): Promise<void> {
+  const raw = await readWorkdayTemplatesRaw();
+  const { templates: normalized } = normalizeWorkdayTemplatesCatalog(raw);
+  const reconcileResult = await ensureWorkdayTemplatesStoreLinksReconciled(normalized);
+
+  if (reconcileResult.templatesChanged) {
+    await writeWorkdayTemplates(reconcileResult.templates);
+  }
 }
 
 async function writeWorkdayTemplates(templates: WorkdayTemplate[]): Promise<void> {
@@ -158,16 +174,17 @@ export async function createWorkdayTemplate(input: {
     throw new Error('Add at least one stop before saving a workday.');
   }
 
+  const reconciledStops = await reconcileWorkdayTemplateStopsForPersist(input.stops);
   const now = new Date().toISOString();
   const template: WorkdayTemplate = {
     id: createWorkdayTemplateId(),
     name: trimmedName,
-    stops: input.stops,
+    stops: reconciledStops,
     createdAt: now,
     updatedAt: now,
   };
 
-  const templates = await readWorkdayTemplates();
+  const templates = await readWorkdayTemplatesRaw();
   await writeWorkdayTemplates([template, ...templates]);
 
   return template;
@@ -202,10 +219,15 @@ export async function updateWorkdayTemplate(
     throw new Error('A saved workday with that name already exists.');
   }
 
+  const nextStops =
+    updates.stops !== undefined
+      ? await reconcileWorkdayTemplateStopsForPersist(updates.stops)
+      : current.stops;
+
   const updated: WorkdayTemplate = {
     ...current,
     name: nextName,
-    stops: updates.stops ?? current.stops,
+    stops: nextStops,
     updatedAt: new Date().toISOString(),
   };
 

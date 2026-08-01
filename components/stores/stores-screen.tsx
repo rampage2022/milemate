@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ import { StoresHeader } from '@/components/stores/stores-header';
 import { StoresLayout } from '@/components/stores/stores-layout';
 import { StoresList } from '@/components/stores/stores-list';
 import { StoresMapView } from '@/components/stores/stores-map-view';
+import type { StoresMapWorkdayFilter } from '@/utils/stores-map-model';
 import { StoresSearchField } from '@/components/stores/stores-search-field';
 import { StoresSegmentedControl } from '@/components/stores/stores-segmented-control';
 import { formatStoreWorkdayMembershipLabel } from '@/components/stores/stores-workday-membership-label';
@@ -40,6 +41,7 @@ export function StoresScreen() {
   const [viewMode, setViewMode] = useState<StoresViewMode>('list');
   const [scope, setScope] = useState<StoresScope>('today');
   const [searchQuery, setSearchQuery] = useState('');
+  const [workdayFilter, setWorkdayFilter] = useState<StoresMapWorkdayFilter>('all');
 
   const {
     assignmentIndex,
@@ -83,11 +85,6 @@ export function StoresScreen() {
           (orderByStoreId.get(right.store.id) ?? 0),
       );
   }, [scopedItems, searchQuery]);
-
-  const displayStores = useMemo(
-    () => displayItems.map((item) => item.store),
-    [displayItems],
-  );
 
   const libraryCount = items.length;
   const scopedCount = scopedItems.length;
@@ -137,6 +134,10 @@ export function StoresScreen() {
   const clearSearch = useCallback(() => {
     setSearchQuery('');
   }, []);
+
+  useEffect(() => {
+    setWorkdayFilter('all');
+  }, [scope]);
 
   const emptyListState = useMemo(() => {
     const trimmedQuery = searchQuery.trim();
@@ -266,9 +267,12 @@ export function StoresScreen() {
           ) : null}
           {!showLoading && !showError && viewMode === 'map' ? (
             <StoresMapView
+              assignmentIndex={assignmentIndex}
+              items={displayItems}
               onOpenStore={openStore}
-              stores={displayStores}
-              workdayAssignments={assignmentIndex}
+              onWorkdayFilterChange={setWorkdayFilter}
+              templates={templates}
+              workdayFilter={workdayFilter}
             />
           ) : null}
         </View>

@@ -7,6 +7,7 @@ import {
   deleteWorkdayTemplate,
   getWorkdayTemplates,
 } from '@/services/workday-templates';
+import { __resetStoreImportIdAliasesForTests } from '@/services/store-import-id-aliases';
 import type { Store } from '@/types/store';
 import {
   createWorkdayTemplateId,
@@ -46,6 +47,7 @@ function stop(storeId?: string) {
 async function runTests() {
   __resetWorkdayTemplatesStorageForTests();
   __resetStoresStorageForTests();
+  __resetStoreImportIdAliasesForTests();
 
   assert.equal(deriveWorkdayPinAbbreviationBase('Monday'), 'M');
   assert.equal(deriveWorkdayPinAbbreviationBase('Tuesday'), 'T');
@@ -250,7 +252,7 @@ async function runTests() {
   assert.equal(summary.templateCount, 1);
   assert.equal(summary.templatesWithMapMetadata, 1);
   assert.equal(summary.assignedStoreCount, 1);
-  assert.equal(summary.unassignedStoreCount, 1);
+  assert.equal(summary.unassignedCanonicalStoreCount, 1);
 
   __setWorkdayTemplatesStorageForTests([
     template({ id: 'wd-del', name: 'Delete', stops: [stop('store-z')] }),
@@ -262,6 +264,7 @@ async function runTests() {
 
   __resetWorkdayTemplatesStorageForTests();
   __resetStoresStorageForTests();
+  __resetStoreImportIdAliasesForTests();
   console.log('store-workday-map-phase1 tests passed');
 }
 

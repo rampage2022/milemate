@@ -8,6 +8,7 @@ import type {
   StoreImportMapping,
 } from '@/types/store-import';
 import { getStores, saveStores } from '@/services/stores';
+import { reconcilePersistedWorkdayTemplateCatalog } from '@/services/workday-templates';
 import { appendStoreImportIdAlias } from '@/services/store-import-id-aliases';
 import {
   findDuplicateInImportBatch,
@@ -359,6 +360,7 @@ export async function importStoresSafely(
   );
 
   await saveStores(nextStores);
+  await reconcilePersistedWorkdayTemplateCatalog();
 
   return result;
 }

@@ -9,7 +9,14 @@ export type StoreImportIdAlias = {
   toStoreId: string;
 };
 
+let aliasStorageOverride: StoreImportIdAlias[] | null = null;
+let aliasStorageUsesOverride = false;
+
 async function readAliases(): Promise<StoreImportIdAlias[]> {
+  if (aliasStorageUsesOverride) {
+    return [...(aliasStorageOverride ?? [])];
+  }
+
   const stored = await AsyncStorage.getItem(STORE_IMPORT_ID_ALIASES_KEY);
 
   if (!stored) {
@@ -84,6 +91,16 @@ export async function getStoreImportIdRemap(): Promise<Map<string, string>> {
   }
 
   return remap;
+}
+
+export function __setStoreImportIdAliasesForTests(aliases: StoreImportIdAlias[]): void {
+  aliasStorageUsesOverride = true;
+  aliasStorageOverride = [...aliases];
+}
+
+export function __resetStoreImportIdAliasesForTests(): void {
+  aliasStorageUsesOverride = true;
+  aliasStorageOverride = [];
 }
 
 export { STORE_IMPORT_ID_ALIASES_KEY };

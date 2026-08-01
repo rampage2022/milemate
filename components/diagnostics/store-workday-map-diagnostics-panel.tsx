@@ -8,6 +8,7 @@ import {
   buildStoreWorkdayAssignmentIndex,
   summarizeStoreWorkdayMapDiagnostics,
 } from '@/utils/store-workday-assignment-index';
+import { countStopsByLinkMethod } from '@/utils/audit-workday-template-stops';
 
 export function StoreWorkdayMapDiagnosticsPanel() {
   const [lines, setLines] = useState<string[]>(['Loading store/workday map summary…']);
@@ -27,8 +28,10 @@ export function StoreWorkdayMapDiagnosticsPanel() {
         storeIdRemap: remap,
         validStoreIds,
       });
+      const linkMethodCounts = countStopsByLinkMethod(templates, stores, remap);
       const summary = summarizeStoreWorkdayMapDiagnostics({
         assignmentIndex,
+        linkMethodCounts,
         storeCount: stores.length,
         templates,
       });
@@ -36,10 +39,16 @@ export function StoreWorkdayMapDiagnosticsPanel() {
       setLines([
         `Workday templates: ${summary.templateCount}`,
         `Templates with map metadata: ${summary.templatesWithMapMetadata}`,
-        `Assigned stores (index): ${summary.assignedStoreCount}`,
-        `Multi-workday stores: ${summary.multiWorkdayStoreCount}`,
-        `Unassigned stores: ${summary.unassignedStoreCount ?? 'n/a'}`,
-        `Orphan template store refs: ${assignmentIndex.orphanedStoreReferences.length}`,
+        `Store library count: ${summary.currentStoreLibraryCount}`,
+        `Assigned canonical stores (index): ${summary.assignedStoreCount}`,
+        `Unassigned canonical stores: ${summary.unassignedCanonicalStoreCount ?? 'n/a'}`,
+        `Multi-workday canonical stores: ${summary.multiWorkdayStoreCount}`,
+        `Direct linked stops: ${summary.canonicallyLinkedStopCount}`,
+        `Alias-repaired stops: ${summary.importAliasRepairedStopCount}`,
+        `Duplicate-reconciled stops: ${summary.duplicateReconciledStopCount}`,
+        `Stores created from template stops: ${summary.createdFromTemplateStopCount}`,
+        `Route-only stops: ${summary.routeOnlyStopCount}`,
+        `Unresolved store references: ${summary.unresolvedStoreReferenceCount}`,
       ]);
     } catch (loadError) {
       console.error('[StoreWorkdayMapDiagnostics] load failed:', loadError);

@@ -1,5 +1,6 @@
 import type { WorkdayTemplate } from '@/types/workday-template';
 import { resolveRemappedStoreId } from '@/utils/store-duplicate-clusters';
+import { isRouteOnlyWorkdayTemplateStop } from '@/utils/workday-template-stop-store-link';
 
 export type StoreWorkdayAssignmentEntry = {
   primaryWorkdayId?: string;
@@ -72,6 +73,10 @@ export function buildStoreWorkdayAssignmentIndex(
     const seenInTemplate = new Set<string>();
 
     for (const stop of template.stops) {
+      if (isRouteOnlyWorkdayTemplateStop(stop)) {
+        continue;
+      }
+
       const rawStoreId = stop.storeId?.trim();
 
       if (!rawStoreId) {
@@ -132,14 +137,22 @@ export function buildStoreWorkdayAssignmentIndex(
 
 export type StoreWorkdayMapDiagnosticSummary = {
   assignedStoreCount: number;
+  canonicallyLinkedStopCount: number;
+  createdFromTemplateStopCount: number;
+  currentStoreLibraryCount: number;
+  duplicateReconciledStopCount: number;
+  importAliasRepairedStopCount: number;
   multiWorkdayStoreCount: number;
+  routeOnlyStopCount: number;
   templateCount: number;
   templatesWithMapMetadata: number;
-  unassignedStoreCount: number | null;
+  unassignedCanonicalStoreCount: number | null;
+  unresolvedStoreReferenceCount: number;
 };
 
 export function summarizeStoreWorkdayMapDiagnostics(input: {
   assignmentIndex: StoreWorkdayAssignmentIndex;
+  linkMethodCounts?: Partial<Record<string, number>>;
   storeCount?: number;
   templates: WorkdayTemplate[];
 }): StoreWorkdayMapDiagnosticSummary {
@@ -157,16 +170,29 @@ export function summarizeStoreWorkdayMapDiagnostics(input: {
   }
 
   const assignedStoreCount = input.assignmentIndex.byStoreId.size;
-  const unassignedStoreCount =
+  const currentStoreLibraryCount = input.storeCount ?? 0;
+  const unassignedCanonicalStoreCount =
     input.storeCount === undefined
       ? null
-      : Math.max(0, input.storeCount - assignedStoreCount);
+      : Math.max(0, currentStoreLibraryCount - assignedStoreCount);
+
+  const counts = input.linkMethodCounts ?? {};
 
   return {
     assignedStoreCount,
+    canonicallyLinkedStopCount: (counts.direct ?? 0) as number,
+    createdFromTemplateStopCount: (counts.created_store ?? 0) as number,
+    currentStoreLibraryCount,
+    duplicateReconciledStopCount:
+      ((counts.duplicate_address ?? 0) as number) +
+      ((counts.duplicate_store_number ?? 0) as number) +
+      ((counts.name_and_address ?? 0) as number),
+    importAliasRepairedStopCount: (counts.import_alias ?? 0) as number,
     multiWorkdayStoreCount,
+    routeOnlyStopCount: (counts.route_only ?? 0) as number,
     templateCount: input.templates.length,
     templatesWithMapMetadata,
-    unassignedStoreCount,
+    unassignedCanonicalStoreCount,
+    unresolvedStoreReferenceCount: input.assignmentIndex.orphanedStoreReferences.length,
   };
 }
