@@ -5,6 +5,7 @@ import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { ActiveWorkdayReorderLayout } from '@/components/coordinator/active-workday-reorder-layout';
 import { AppColors, MileMateTokens } from '@/components/shared/app-theme';
 import type { StoreVisit } from '@/types/store-visit';
+import { isVisitCheckedInForActiveWorkdayReorder } from '@/utils/active-workday-route-origin';
 
 type ActiveWorkdayReorderStopRowProps = {
   addressLine: string;
@@ -104,10 +105,12 @@ export function ActiveWorkdayReorderStopRow({
 
 export function isVisitCurrentForReorder(
   visit: StoreVisit,
-  currentVisitId: string | null,
+  _currentVisitId: string | null,
 ): boolean {
-  return visit.id === currentVisitId && visit.status === 'current';
+  return isVisitCheckedInForActiveWorkdayReorder(visit);
 }
+
+export { isVisitCheckedInForActiveWorkdayReorder };
 
 const styles = StyleSheet.create({
   row: {

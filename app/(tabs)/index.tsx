@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { workdayDockTotalHeight } from '@/components/navigation/workday-dock';
 
+import { AddStopScreen } from '@/components/add-stop/add-stop-screen';
 import { CoordinatorPlanningScreen } from '@/components/coordinator/coordinator-planning-screen';
 import { CoordinatorLiveRouteScreen } from '@/components/coordinator/coordinator-live-route-screen';
 import { HomeIdleScreen } from '@/components/home/home-idle-screen';
@@ -35,6 +36,7 @@ import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
 import { useMyLocations } from '@/hooks/use-my-locations';
 import { usePlanningRouteSummary } from '@/hooks/use-planning-route-summary';
 import { useRoutePlanning } from '@/hooks/use-route-planning';
+import { useTodayRouteSelection } from '@/hooks/use-today-route-selection';
 import { useTodayRoute } from '@/hooks/use-today-route';
 import { getActiveTrip, saveActiveTrip } from '@/services/active-trip';
 import { clearRouteSessionTimingForToday } from '@/services/route-session-timing';
@@ -45,8 +47,11 @@ import {
   applyMakeNext,
   applyRemoveFromToday,
   applyRouteReorder,
+  finalizeActiveWorkdayAfterStopAdded,
 } from '@/services/route-edit-commands';
 import {
+  addExistingStoresToTodayRoute,
+  addManualStopToTodayRoute,
   calculateTodayRoute,
   clearTodayRouteStops,
   type RouteCalculationStep,
@@ -83,7 +88,8 @@ import { formatTodayHeading } from '@/utils/today-date';
 import { useGestureInteractionCleanup } from '@/hooks/use-gesture-interaction-cleanup';
 import { resetRoutePlanningForNewRoute } from '@/services/route-planning-reset';
 import { shouldShowRouteEntryLauncher } from '@/utils/route-tab-experience';
-import { hasVisitStops } from '@/utils/route-state';
+import { getStartLocation, hasVisitStops } from '@/utils/route-state';
+import type { RouteLocation } from '@/types/route-location';
 import { subscribeDevResetHome } from '@/utils/dev-reset-home-signal';
 import type { SavedRoute } from '@/types/saved-route';
 import { prepareStartDayLocationRequirements } from '@/services/start-day-flow';
@@ -121,6 +127,7 @@ export default function TodayScreen() {
   const [isFinishingWorkday, setIsFinishingWorkday] = useState(false);
   const [isStartingDay, setIsStartingDay] = useState(false);
   const [startDayError, setStartDayError] = useState<string | null>(null);
+  const startDayInFlightRef = useRef(false);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
   const [activeCalculationStep, setActiveCalculationStep] =
@@ -131,6 +138,8 @@ export default function TodayScreen() {
   const [isPlanningAddressEntryActive, setIsPlanningAddressEntryActive] =
     useState(false);
   const [isAddingStopsDuringWorkday, setIsAddingStopsDuringWorkday] =
+    useState(false);
+  const [activeWorkdayAddStopVisible, setActiveWorkdayAddStopVisible] =
     useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [routePlanningSessionOpen, setRoutePlanningSessionOpen] = useState(false);
@@ -165,11 +174,12 @@ export default function TodayScreen() {
     refresh: refreshPlanningDraft,
     setPhase,
     updateLocations,
-  } = useRoutePlanning();
+  } = useRoutePlanning(myLocations);
+  const { selection: todayRouteSelection } = useTodayRouteSelection();
 
   const screenMode = resolveCoordinatorScreenMode({
     isRestoring,
-    isLoading: isLoading || isPlanningLoading,
+    isLoading: (isLoading || isPlanningLoading) && !isWorkdayActive,
     isWorkdayActive,
     isEditingRouteDuringWorkday: isAddingStopsDuringWorkday,
     visits,
@@ -408,25 +418,35 @@ export default function TodayScreen() {
     })();
   };
 
-  const beginTodayRouteNavigation = useCallback(async () => {
-    if (isRestoring) {
-      return;
-    }
+  const beginTodayRouteNavigation = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (isRestoring && !options?.force) {
+        return false;
+      }
 
-    await startTodayRoute();
-    await refreshWorkdayCoordinatorFromPersistence({
-      action: 'startRoute',
-      completionPhase: 'idle',
-    });
-    requestRouteRefresh();
-    await refresh();
-  }, [isRestoring, refresh, requestRouteRefresh]);
+      await startTodayRoute();
+      await refreshWorkdayCoordinatorFromPersistence({
+        action: 'startRoute',
+        completionPhase: 'idle',
+      });
+      requestRouteRefresh();
+      await refresh();
+      return true;
+    },
+    [isRestoring, refresh, requestRouteRefresh],
+  );
 
   const handleStartDay = () => {
-    if (isRestoring || isStartingDay || isWorkdayActive) {
+    if (
+      isRestoring ||
+      isStartingDay ||
+      isWorkdayActive ||
+      startDayInFlightRef.current
+    ) {
       return;
     }
 
+    startDayInFlightRef.current = true;
     setIsStartingDay(true);
     setStartDayError(null);
 
@@ -444,7 +464,14 @@ export default function TodayScreen() {
 
         const activeTrip = await getActiveTrip();
 
-        if (activeTrip?.id) {
+        if (!activeTrip?.id) {
+          setStartDayError(
+            'Could not start the workday. Check location permission and try again.',
+          );
+          return;
+        }
+
+        if (activeTrip.id) {
           const routeContext = await buildActiveRouteContextFromPlanningDraft(planningDraft);
 
           await saveActiveTrip({
@@ -460,10 +487,22 @@ export default function TodayScreen() {
           completionPhase: 'idle',
         });
         await refresh();
-        await beginTodayRouteNavigation();
+        await refreshPlanningDraft();
+
+        const routeStartedOk = await beginTodayRouteNavigation({ force: true });
+
+        if (!routeStartedOk) {
+          setStartDayError(
+            'Workday started, but the route could not begin. Pull to refresh or tap Start Route.',
+          );
+        }
       } catch (error: unknown) {
         console.error('[TodayScreen] start day failed:', error);
+        setStartDayError(
+          'Could not start the workday. Check your connection and try again.',
+        );
       } finally {
+        startDayInFlightRef.current = false;
         setIsStartingDay(false);
       }
     })();
@@ -512,7 +551,7 @@ export default function TodayScreen() {
       return;
     }
 
-    void beginTodayRouteNavigation().catch((error: unknown) => {
+    void beginTodayRouteNavigation({ force: true }).catch((error: unknown) => {
       console.error('[TodayScreen] start route failed:', error);
     });
   };
@@ -547,7 +586,7 @@ export default function TodayScreen() {
 
     autoStartRouteAttemptedRef.current = true;
 
-    void beginTodayRouteNavigation().catch((error: unknown) => {
+    void beginTodayRouteNavigation({ force: true }).catch((error: unknown) => {
       console.error('[TodayScreen] auto start route failed:', error);
       autoStartRouteAttemptedRef.current = false;
     });
@@ -602,36 +641,58 @@ export default function TodayScreen() {
   };
 
   const handleAddStopsDuringWorkday = useCallback(() => {
-    if (isRestoring) {
+    if (isRestoring || !isWorkdayActive) {
       return;
     }
 
-    setIsAddingStopsDuringWorkday(true);
-    void backToPlanning()
-      .then(() => refreshPlanningDraft())
-      .catch((error: unknown) => {
-        console.error('[TodayScreen] add stops failed:', error);
-      });
-  }, [backToPlanning, isRestoring, refreshPlanningDraft]);
+    setActiveWorkdayAddStopVisible(true);
+  }, [isRestoring, isWorkdayActive]);
+
+  const refreshAfterActiveWorkdayStopAdd = useCallback(async () => {
+    await finalizeActiveWorkdayAfterStopAdded(visitCompletionPhase);
+    requestRouteRefresh();
+    await refresh();
+    await refreshPlanningDraft();
+  }, [refresh, refreshPlanningDraft, requestRouteRefresh, visitCompletionPhase]);
+
+  const handleActiveWorkdayAddExistingStores = useCallback(
+    async (storeIds: string[]) => {
+      await addExistingStoresToTodayRoute(storeIds);
+      await refreshAfterActiveWorkdayStopAdd();
+    },
+    [refreshAfterActiveWorkdayStopAdd],
+  );
+
+  const handleActiveWorkdayAddStopLocation = useCallback(
+    async (location: RouteLocation) => {
+      await addManualStopToTodayRoute(location);
+      await refreshAfterActiveWorkdayStopAdd();
+    },
+    [refreshAfterActiveWorkdayStopAdd],
+  );
 
   const handleAddStopForStore = useCallback(
     (storeId: string) => {
-      Alert.alert(
-        'Add stop',
-        'Open Build Route to add this store to today\u2019s route.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Add stops', onPress: () => handleAddStopsDuringWorkday() },
-          {
-            text: 'View store',
-            onPress: () => {
-              router.push(`/store/${storeId}`);
-            },
-          },
-        ],
-      );
+      if (isRestoring || !isWorkdayActive) {
+        return;
+      }
+
+      void (async () => {
+        try {
+          await addExistingStoresToTodayRoute([storeId]);
+          await refreshAfterActiveWorkdayStopAdd();
+        } catch (error: unknown) {
+          console.error('[TodayScreen] add stop for store failed:', error);
+          Alert.alert(
+            'Add stop',
+            error instanceof Error
+              ? error.message
+              : 'Could not add this stop. Try again.',
+          );
+        }
+      })();
     },
-    [handleAddStopsDuringWorkday, router],
+    [isRestoring, isWorkdayActive, refreshAfterActiveWorkdayStopAdd],
   );
 
   const handleScrollActiveWorkdayToTop = useCallback(() => {
@@ -704,7 +765,11 @@ export default function TodayScreen() {
 
   const handleReorderRoute = (orderedVisitIds: string[]) => {
     void applyRouteReorder(orderedVisitIds, routeEditOptions)
-      .then(() => requestRouteRefresh())
+      .then(async () => {
+        requestRouteRefresh();
+        await refresh();
+        await refreshPlanningDraft();
+      })
       .catch((error: unknown) => {
         console.error('[TodayScreen] reorder route failed:', error);
       });
@@ -938,7 +1003,17 @@ export default function TodayScreen() {
     !showRouteEntryLauncher &&
     screenMode === 'active_workday' &&
     !showRouteComplete &&
-    routeStarted;
+    (routeStarted || hasVisitStops(visits));
+
+  const activeWorkdayRouteStoreIds = useMemo(
+    () => [...new Set(visits.map((visit) => visit.storeId))],
+    [visits],
+  );
+
+  const activeWorkdayAddStopDistanceAnchor = useMemo(
+    () => getStartLocation(planningDraft),
+    [planningDraft],
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -989,6 +1064,17 @@ export default function TodayScreen() {
               totalCount={totalCount}
               visits={visits}
             />
+            <AddStopScreen
+              currentRouteStoreIds={activeWorkdayRouteStoreIds}
+              distanceAnchorLocation={activeWorkdayAddStopDistanceAnchor}
+              intent="stop"
+              onAddExistingStore={handleActiveWorkdayAddExistingStores}
+              onAddStop={handleActiveWorkdayAddStopLocation}
+              onClose={() => {
+                setActiveWorkdayAddStopVisible(false);
+              }}
+              visible={activeWorkdayAddStopVisible}
+            />
           </View>
         ) : (
         <>
@@ -1030,6 +1116,7 @@ export default function TodayScreen() {
             <HomeIdleScreen
               myLocations={myLocations}
               planningStartLocation={planningDraft.startLocation}
+              todayRouteSelection={todayRouteSelection}
               onLoadWorkday={handleOpenSavedRoutes}
               onNewWorkday={() => {
                 void (async () => {
@@ -1168,7 +1255,8 @@ export default function TodayScreen() {
           screenMode === 'active_workday' &&
           !showRouteComplete &&
           !routeStarted &&
-          hasVisitStops(visits) ? (
+          hasVisitStops(visits) &&
+          !showActiveWorkdayRoute ? (
             <View
               accessibilityLabel="Starting route"
               accessibilityRole="progressbar"

@@ -118,7 +118,7 @@ export async function loadWorkdayPreviewInsights(input: {
     thingsToKnow.push({
       id: 'missed-deliveries',
       kind: 'missed_deliveries',
-      title: `${missedCount} store${missedCount === 1 ? '' : 's'} missed deliveries yesterday`,
+      title: `${missedCount} store${missedCount === 1 ? '' : 's'} had a missed delivery yesterday`,
       subtitle: 'Check notes before arrival',
     });
   }

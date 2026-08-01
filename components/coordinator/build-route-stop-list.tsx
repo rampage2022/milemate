@@ -355,13 +355,14 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     justifyContent: 'center',
     minHeight: 36,
-    width: 48,
+    width: 52,
   },
   legDistance: {
     color: AppColors.blue,
     fontSize: BuildRouteLayout.legDistanceSize,
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
+    maxWidth: 52,
     textAlign: 'right',
   },
 });

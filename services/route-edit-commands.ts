@@ -4,6 +4,7 @@ import {
   mergeReorderedPendingVisitIds,
 } from '@/utils/active-route-editing';
 import { refreshWorkdayCoordinatorFromPersistence } from '@/services/workday-coordinator-integration';
+import { recalculateActiveWorkdayRouteEstimate } from '@/services/active-workday-route-recalculation';
 import {
   removeStopFromTodayRoute,
   reorderTodayRouteVisits,
@@ -129,6 +130,14 @@ async function afterRouteStructureChange(
   });
 }
 
+/** Recalculate route estimate and refresh coordinator after append-only stop adds. */
+export async function finalizeActiveWorkdayAfterStopAdded(
+  completionPhase: CompletionPhase = 'idle',
+): Promise<void> {
+  await recalculateActiveWorkdayRouteEstimate();
+  await afterRouteStructureChange('routeEditAddStop', completionPhase);
+}
+
 export async function applyRouteReorder(
   orderedVisitIds: string[],
   options: ApplyRouteEditOptions,
@@ -136,6 +145,11 @@ export async function applyRouteReorder(
   await reorderTodayRouteVisits(orderedVisitIds, {
     duringActiveWorkday: options.duringActiveWorkday,
   });
+
+  if (options.duringActiveWorkday) {
+    await recalculateActiveWorkdayRouteEstimate();
+  }
+
   await afterRouteStructureChange('routeEditReorder', options.completionPhase);
 }
 

@@ -3,7 +3,7 @@ export const AddStopLayout = {
   headerTitleSize: 28,
   searchRadius: 14,
   quickActionCardWidth: 132,
-  quickActionCardHeight: 112,
+  quickActionCardHeight: 124,
   rowIconSize: 40,
   addButtonSize: 36,
   sectionTitleSize: 17,

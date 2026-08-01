@@ -11,6 +11,8 @@ import {
 } from '@/services/route-planning';
 import type { RouteLocation } from '@/types/route-location';
 import type { RoutePlanningDraft } from '@/types/route-planning';
+import type { SavedLocation } from '@/types/saved-location';
+import { hydratePlanningDraftFromTodaySelection } from '@/utils/planning-draft-hydration';
 import { getTodayDateString } from '@/utils/today-date';
 
 function createInitialDraft(): RoutePlanningDraft {
@@ -27,7 +29,7 @@ function createInitialDraft(): RoutePlanningDraft {
   };
 }
 
-export function useRoutePlanning() {
+export function useRoutePlanning(myLocations: SavedLocation[] = []) {
   const [draft, setDraft] = useState<RoutePlanningDraft>(createInitialDraft());
   const [isLoading, setIsLoading] = useState(true);
   const hasLoadedRef = useRef(false);
@@ -41,7 +43,11 @@ export function useRoutePlanning() {
 
     try {
       const loaded = await getRoutePlanningDraft();
-      setDraft(loaded);
+      const hydrated = await hydratePlanningDraftFromTodaySelection({
+        draft: loaded,
+        myLocations,
+      });
+      setDraft(hydrated);
       hasLoadedRef.current = true;
     } catch (error) {
       console.error('[useRoutePlanning] load failed:', error);
@@ -50,7 +56,7 @@ export function useRoutePlanning() {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [myLocations]);
 
   const setPhase = useCallback(async (phase: RoutePlanningDraft['phase']) => {
     const next = await updateRoutePlanningPhase(phase);

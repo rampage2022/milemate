@@ -21,6 +21,7 @@ import {
 import { useHomeWeather } from '@/hooks/use-home-weather';
 import type { RouteLocation } from '@/types/route-location';
 import type { SavedLocation } from '@/types/saved-location';
+import type { TodayRouteSelection } from '@/types/today-route-selection';
 import { resolveHomeStartLocationDisplay } from '@/utils/home-start-location-display';
 
 function defaultMapsAppLabel(): string {
@@ -96,6 +97,7 @@ type HomeIdleScreenProps = {
   displayName?: string | null;
   myLocations: SavedLocation[];
   planningStartLocation: RouteLocation | null;
+  todayRouteSelection: TodayRouteSelection;
   onLoadWorkday: () => void;
   onNewWorkday: () => void;
   onOpenProfile: () => void;
@@ -106,6 +108,7 @@ export function HomeIdleScreen({
   displayName,
   myLocations,
   planningStartLocation,
+  todayRouteSelection,
   onLoadWorkday,
   onNewWorkday,
   onOpenProfile,
@@ -114,6 +117,7 @@ export function HomeIdleScreen({
   const startDisplay = resolveHomeStartLocationDisplay({
     myLocations,
     planningStartLocation,
+    todayRouteSelection,
   });
   const { streetLine, localityLine } = formatHomeStartLocationLines(
     startDisplay.ready ? startDisplay.addressLine : '',

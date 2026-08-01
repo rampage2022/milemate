@@ -1,7 +1,9 @@
 import { formatDurationDisplay } from '@/components/home/format-workday';
+import type { RouteLocation } from '@/types/route-location';
 import type { Store } from '@/types/store';
 import type { StoreVisit } from '@/types/store-visit';
 import { formatVisitCompletionTime } from '@/utils/coordinator-screen-presentation';
+import { resolveActiveWorkdayLegOriginStore } from '@/utils/active-workday-route-origin';
 import { formatDriveTime, formatEstimatedFinish } from '@/utils/route-optimization';
 import { estimateDriveMinutesBetweenCoordinates } from '@/utils/live-route-summary';
 import { distanceMiles } from '@/utils/distance';
@@ -115,7 +117,7 @@ function storeRowCopy(store: Store): { name: string; address: string } {
 
 export function buildActiveWorkdayLists(input: {
   currentVisitId: string | null;
-  fromStore: Store | null;
+  startLocation: RouteLocation | null;
   storesById: Record<string, Store>;
   visits: StoreVisit[];
 }): {
@@ -132,7 +134,11 @@ export function buildActiveWorkdayLists(input: {
   const skipped: ActiveWorkdaySkippedRow[] = [];
 
   let nextStopAssigned = false;
-  let previousStore: Store | null = input.fromStore;
+  let previousStore: Store | null = resolveActiveWorkdayLegOriginStore({
+    startLocation: input.startLocation,
+    storesById: input.storesById,
+    visits: sorted,
+  });
 
   sorted.forEach((visit, index) => {
     const store = input.storesById[visit.storeId];
@@ -170,18 +176,45 @@ export function buildActiveWorkdayLists(input: {
       nextStopAssigned = true;
     }
 
-    const legMinutes = estimateDriveMinutesBetweenStores(previousStore ?? undefined, store);
+    const legMinutes =
+      previousStore !== null
+        ? estimateDriveMinutesBetweenStores(previousStore, store)
+        : input.startLocation &&
+            typeof store.latitude === 'number' &&
+            typeof store.longitude === 'number'
+          ? estimateDriveMinutesBetweenCoordinates(
+              {
+                latitude: input.startLocation.latitude,
+                longitude: input.startLocation.longitude,
+              },
+              { latitude: store.latitude, longitude: store.longitude },
+            )
+          : null;
     let milesLabel: string | null = null;
 
-    if (
-      previousStore &&
-      typeof previousStore.latitude === 'number' &&
-      typeof previousStore.longitude === 'number' &&
+    if (previousStore) {
+      if (
+        typeof previousStore.latitude === 'number' &&
+        typeof previousStore.longitude === 'number' &&
+        typeof store.latitude === 'number' &&
+        typeof store.longitude === 'number'
+      ) {
+        const miles = distanceMiles(
+          { latitude: previousStore.latitude, longitude: previousStore.longitude },
+          { latitude: store.latitude, longitude: store.longitude },
+        );
+        milesLabel = `${miles.toFixed(1)} mi`;
+      }
+    } else if (
+      input.startLocation &&
       typeof store.latitude === 'number' &&
       typeof store.longitude === 'number'
     ) {
       const miles = distanceMiles(
-        { latitude: previousStore.latitude, longitude: previousStore.longitude },
+        {
+          latitude: input.startLocation.latitude,
+          longitude: input.startLocation.longitude,
+        },
         { latitude: store.latitude, longitude: store.longitude },
       );
       milesLabel = `${miles.toFixed(1)} mi`;
@@ -198,17 +231,7 @@ export function buildActiveWorkdayLists(input: {
       etaLabel: legMinutes !== null ? `ETA ${formatDriveTime(legMinutes)}` : null,
     });
 
-    if (
-      visit.id === input.currentVisitId ||
-      visit.status === 'current' ||
-      visit.status === 'checked_in'
-    ) {
-      previousStore = store;
-    } else if (isNextStop) {
-      previousStore = store;
-    } else {
-      previousStore = store;
-    }
+    previousStore = store;
   });
 
   return { completed, remaining, skipped };

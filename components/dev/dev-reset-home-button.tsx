@@ -2,14 +2,12 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppColors, AppSpacing } from '@/components/shared/app-theme';
-import { useRouteEditSession } from '@/contexts/route-edit-session-context';
+import { AppColors } from '@/components/shared/app-theme';
 import { useWorkdayNavigation } from '@/contexts/workday-navigation-context';
 import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
 import { devResetToHomePersistence } from '@/services/dev-reset-to-home';
 import { notifyDevResetHome } from '@/utils/dev-reset-home-signal';
-
-import { ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT } from '@/components/coordinator/active-workday-reorder-layout';
+import { useRouteEditSession } from '@/contexts/route-edit-session-context';
 
 export function DevResetHomeButton() {
   if (typeof __DEV__ === 'undefined' || !__DEV__) {
@@ -56,12 +54,8 @@ function DevResetHomeButtonInner() {
 
   const hostStyle = isRouteEditMode
     ? {
-        bottom:
-          insets.bottom +
-          AppSpacing.tabBarContentHeight +
-          ACTIVE_WORKDAY_REORDER_FOOTER_HEIGHT +
-          8,
         right: insets.right + 8,
+        top: insets.top + 56,
       }
     : {
         left: insets.left + 8,

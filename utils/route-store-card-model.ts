@@ -1,4 +1,6 @@
 import { formatPlanningStopDisplay } from '@/components/coordinator/planning-address-display';
+import { resolveActiveWorkdayLegOriginStore, resolvePreviousStoreForRouteLeg } from '@/utils/active-workday-route-origin';
+import type { RouteLocation } from '@/types/route-location';
 import type { Store } from '@/types/store';
 import type { StoreVisit } from '@/types/store-visit';
 import { distanceMiles } from '@/utils/distance';
@@ -90,11 +92,11 @@ export function buildRouteLegLabels(input: {
   currentVisitId: string | null;
   fromStore: Store | undefined;
   nowMs?: number;
+  startLocation?: RouteLocation | null;
   targetVisit: StoreVisit;
   visits: StoreVisit[];
   storesById: Record<string, Store>;
 }): { arrivalLabel?: string; distanceLabel?: string } {
-  const nowMs = input.nowMs ?? Date.now();
   const sorted = [...input.visits].sort(
     (left, right) => left.routeOrder - right.routeOrder,
   );
@@ -104,85 +106,21 @@ export function buildRouteLegLabels(input: {
     return {};
   }
 
-  const currentIndex =
-    input.currentVisitId !== null
-      ? sorted.findIndex((visit) => visit.id === input.currentVisitId)
-      : -1;
+  const originStore =
+    input.fromStore ??
+    resolveActiveWorkdayLegOriginStore({
+      startLocation: input.startLocation ?? null,
+      storesById: input.storesById,
+      visits: input.visits,
+    });
 
-  let fromStore = input.fromStore;
-
-  if (currentIndex >= 0 && targetIndex > currentIndex) {
-    fromStore = input.storesById[sorted[currentIndex]!.storeId];
-
-    let accumulatedMinutes = 0;
-
-    for (let index = currentIndex + 1; index <= targetIndex; index += 1) {
-      const visit = sorted[index]!;
-      const toStore = input.storesById[visit.storeId];
-
-      if (index === targetIndex) {
-        const miles =
-          fromStore &&
-          toStore &&
-          fromStore.latitude !== undefined &&
-          fromStore.longitude !== undefined &&
-          toStore.latitude !== undefined &&
-          toStore.longitude !== undefined
-            ? distanceMiles(
-                { latitude: fromStore.latitude, longitude: fromStore.longitude },
-                { latitude: toStore.latitude, longitude: toStore.longitude },
-              )
-            : null;
-
-        const legMinutes = legMinutesBetweenStores(fromStore, toStore);
-
-        return {
-          distanceLabel: formatDistanceLabel(miles),
-          arrivalLabel:
-            formatArriveLabelFromMinutes(accumulatedMinutes + (legMinutes ?? 0), nowMs) ??
-            formatEtaMinutesLabel(legMinutes),
-        };
-      }
-
-      const legMinutes = legMinutesBetweenStores(fromStore, toStore);
-
-      if (legMinutes !== null) {
-        accumulatedMinutes += legMinutes + 12;
-      }
-
-      fromStore = toStore;
-    }
-  }
-
-  if (targetIndex === 0) {
-    const store = input.storesById[input.targetVisit.storeId];
-
-    if (input.fromStore && store) {
-      const legMinutes = legMinutesBetweenStores(input.fromStore, store);
-      const miles =
-        input.fromStore.latitude !== undefined &&
-        input.fromStore.longitude !== undefined &&
-        store.latitude !== undefined &&
-        store.longitude !== undefined
-          ? distanceMiles(
-              {
-                latitude: input.fromStore.latitude,
-                longitude: input.fromStore.longitude,
-              },
-              { latitude: store.latitude, longitude: store.longitude },
-            )
-          : null;
-
-      return {
-        distanceLabel: formatDistanceLabel(miles),
-        arrivalLabel: formatEtaMinutesLabel(legMinutes),
-      };
-    }
-  }
-
-  const previous = targetIndex > 0 ? sorted[targetIndex - 1] : null;
+  const previousStore = resolvePreviousStoreForRouteLeg({
+    originStore,
+    storesById: input.storesById,
+    targetVisitId: input.targetVisit.id,
+    visits: input.visits,
+  });
   const targetStore = input.storesById[input.targetVisit.storeId];
-  const previousStore = previous ? input.storesById[previous.storeId] : undefined;
   const legMinutes = legMinutesBetweenStores(previousStore, targetStore);
   const miles =
     previousStore &&
@@ -211,6 +149,7 @@ export function buildRouteStoreCardViewModel(input: {
   delivery?: RouteDeliveryChipModel | null;
   fromStore?: Store;
   nextVisitId: string | null;
+  startLocation?: RouteLocation | null;
   store: Store;
   variant: RouteStoreCardVariant;
   visit: StoreVisit;
@@ -250,6 +189,7 @@ export function buildRouteStoreCardViewModel(input: {
   const legLabels = buildRouteLegLabels({
     currentVisitId: input.currentVisitId,
     fromStore: input.fromStore,
+    startLocation: input.startLocation,
     targetVisit: input.visit,
     visits: input.visits,
     storesById: input.storesById,

@@ -1,5 +1,7 @@
 import type { RouteLocation } from '@/types/route-location';
 import type { SavedLocation } from '@/types/saved-location';
+import type { TodayRouteSelection } from '@/types/today-route-selection';
+import { resolveAuthoritativePlanningStartLocation } from '@/utils/authoritative-start-location';
 
 export type HomeStartLocationDisplay = {
   addressLine: string;
@@ -36,7 +38,28 @@ function savedLocationCoordinates(location: SavedLocation): {
 export function resolveHomeStartLocationDisplay(input: {
   myLocations: SavedLocation[];
   planningStartLocation: RouteLocation | null;
+  todayRouteSelection: TodayRouteSelection;
 }): HomeStartLocationDisplay {
+  const authoritative = resolveAuthoritativePlanningStartLocation({
+    myLocations: input.myLocations,
+    planningStartLocation: input.planningStartLocation,
+    todayRouteSelection: input.todayRouteSelection,
+  });
+
+  if (authoritative) {
+    const addressLine = normalizeAddressLine(authoritative.formattedAddress);
+
+    if (addressLine.length > 0) {
+      return {
+        addressLine,
+        latitude: authoritative.latitude,
+        longitude: authoritative.longitude,
+        name: authoritative.name?.trim() ?? null,
+        ready: true,
+      };
+    }
+  }
+
   if (input.planningStartLocation) {
     const addressLine = normalizeAddressLine(input.planningStartLocation.formattedAddress);
 

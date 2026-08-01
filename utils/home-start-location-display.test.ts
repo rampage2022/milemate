@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
+import { createEmptyTodayRouteSelection } from '../types/today-route-selection';
 import { resolveHomeStartLocationDisplay } from './home-start-location-display';
+
+const emptySelection = createEmptyTodayRouteSelection('2026-07-29');
 
 const savedLocation = {
   id: 'loc-1',
@@ -16,11 +19,13 @@ assert.deepEqual(
   resolveHomeStartLocationDisplay({
     myLocations: [savedLocation],
     planningStartLocation: null,
+    todayRouteSelection: emptySelection,
   }),
   {
     addressLine: '1714 Williams Rd, Irving, TX',
     latitude: 32.8,
     longitude: -96.9,
+    name: 'Home',
     ready: true,
   },
 );
@@ -35,6 +40,7 @@ assert.deepEqual(
       longitude: -89.6,
       source: 'profile',
     },
+    todayRouteSelection: emptySelection,
   }).addressLine,
   '410 Oak Street, Springfield, IL 62704',
 );
@@ -49,6 +55,7 @@ assert.equal(
       longitude: -96.8,
       source: 'manual',
     },
+    todayRouteSelection: emptySelection,
   }).addressLine,
   '99 Plan Way, Dallas, TX',
 );

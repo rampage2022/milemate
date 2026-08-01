@@ -58,6 +58,7 @@ type ActiveWorkdayScreenProps = {
   routeStoreIds: string[];
   scrollPaddingBottom: number;
   scrollRef?: RefObject<ScrollView | null>;
+  startLocation: RouteLocation | null;
   totalDistanceMiles: number;
   visits: StoreVisit[];
   workdayStartedAt: number | null;
@@ -180,6 +181,7 @@ export function ActiveWorkdayScreen({
   routeStoreIds,
   scrollPaddingBottom,
   scrollRef,
+  startLocation,
   totalDistanceMiles,
   visits,
   workdayStartedAt,
@@ -223,9 +225,9 @@ export function ActiveWorkdayScreen({
         visits,
         storesById,
         currentVisitId,
-        fromStore,
+        startLocation,
       }),
-    [currentVisitId, fromStore, storesById, visits],
+    [currentVisitId, startLocation, storesById, visits],
   );
 
   const completedPreview = sliceForPreview(lists.completed, showAllCompleted);
@@ -268,6 +270,7 @@ export function ActiveWorkdayScreen({
             currentVisitId,
             delivery: null,
             nextVisitId,
+            startLocation,
             store,
             variant,
             visit,

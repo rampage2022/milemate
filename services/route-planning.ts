@@ -269,6 +269,24 @@ export async function invalidateRoutePlanningEstimate(): Promise<RoutePlanningDr
   return next;
 }
 
+export async function updateRoutePlanningEstimate(input: {
+  drivingPolyline: RouteMapCoordinate[] | null;
+  estimate: PlannedRouteEstimate;
+}): Promise<RoutePlanningDraft> {
+  const current = await getRoutePlanningDraft();
+  const next: RoutePlanningDraft = {
+    ...current,
+    calculatedAt: new Date().toISOString(),
+    drivingPolyline: input.drivingPolyline,
+    estimate: input.estimate,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await setRoutePlanningDraft(next);
+
+  return next;
+}
+
 export function routeLocationFromSavedProfile(input: {
   id: string;
   label: string;

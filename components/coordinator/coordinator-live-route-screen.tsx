@@ -20,7 +20,7 @@ import type { TodayRouteStore } from '@/hooks/use-today-route';
 import type { RoutePlanningDraft } from '@/types/route-planning';
 import type { Store } from '@/types/store';
 import type { StoreVisit } from '@/types/store-visit';
-import { getFinishLocation } from '@/utils/route-state';
+import { getFinishLocation, getStartLocation } from '@/utils/route-state';
 import {
   buildActiveRouteExperienceModel,
   buildPlanningRouteExperienceModel,
@@ -153,6 +153,7 @@ export function CoordinatorLiveRouteScreen({
 
   const activeStopVisitId = routeStarted ? (current?.visit.id ?? null) : null;
   const finishLocation = useMemo(() => getFinishLocation(draft), [draft]);
+  const startLocation = useMemo(() => getStartLocation(draft), [draft]);
   const routeStoreIds = useMemo(
     () => [...new Set(visits.map((visit) => visit.storeId))],
     [visits],
@@ -237,6 +238,7 @@ export function CoordinatorLiveRouteScreen({
             routeStoreIds={routeStoreIds}
             scrollPaddingBottom={scrollClearanceBottom}
             scrollRef={scrollRef}
+            startLocation={startLocation}
             storesById={storesById}
             totalDistanceMiles={distanceMiles}
             visits={visits}

@@ -16,12 +16,16 @@ export function buildWorkdayPreviewChecklist(input: {
   const navigationReady =
     input.presentation.routeHealth?.status === 'verified' ||
     input.presentation.routeHealth === null;
-  const routeOptimized = true;
+  const routeOptimized = input.stopCount > 1;
   const autoCheckInEnabled = input.autoCheckInMode !== 'manual';
   const allStopsLoaded = input.stopCount > 0;
 
   return [
-    { id: 'optimized', label: 'Route optimized', ready: routeOptimized },
+    {
+      id: 'optimized',
+      label: input.stopCount <= 1 ? 'Route ready' : 'Route optimized',
+      ready: routeOptimized || input.stopCount <= 1,
+    },
     { id: 'auto-check-in', label: 'Auto check-in enabled', ready: autoCheckInEnabled },
     { id: 'navigation', label: 'Navigation ready', ready: navigationReady },
     { id: 'stops-loaded', label: 'All stops loaded', ready: allStopsLoaded },

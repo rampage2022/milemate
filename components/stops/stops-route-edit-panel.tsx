@@ -22,8 +22,11 @@ import { RouteEditLockedRow } from '@/components/stops/route-edit-locked-row';
 import { RouteEditPendingRow } from '@/components/stops/route-edit-pending-row';
 import {
   ActiveWorkdayReorderStopRow,
-  isVisitCurrentForReorder,
 } from '@/components/stops/active-workday-reorder-stop-row';
+import {
+  isVisitCheckedInForActiveWorkdayReorder,
+  resolveNextStopVisitIdForActiveWorkdayReorder,
+} from '@/utils/active-workday-route-origin';
 import { CompletedStopCard } from '@/components/stops/completed-stop-card';
 import { closeAllSwipeActions, SwipeActionRow } from '@/components/shared/swipe-action-row';
 import { AppColors } from '@/components/shared/app-theme';
@@ -163,6 +166,10 @@ export function StopsRouteEditPanel({
   }, [finishDrag]);
 
   const nextPendingVisitId = useMemo(() => {
+    if (isActiveWorkdayPresentation) {
+      return resolveNextStopVisitIdForActiveWorkdayReorder(visits);
+    }
+
     const currentVisit =
       currentVisitId !== null
         ? visits.find((visit) => visit.id === currentVisitId) ?? null
@@ -171,7 +178,7 @@ export function StopsRouteEditPanel({
     const nextVisit = resolveNextVisit(visits, currentVisit);
 
     return nextVisit?.status === 'pending' ? nextVisit.id : null;
-  }, [currentVisitId, visits]);
+  }, [currentVisitId, isActiveWorkdayPresentation, visits]);
 
   function handleOpenStore(storeId: string) {
     onHighlightStop?.(storeId);
@@ -280,7 +287,7 @@ export function StopsRouteEditPanel({
                 addressLine={addressLine}
                 delayLongPress={LONG_PRESS_DELAY_MS}
                 isActive={isActive}
-                isCurrentStop={isVisitCurrentForReorder(visit, currentVisitId)}
+                isCurrentStop={isVisitCheckedInForActiveWorkdayReorder(visit)}
                 isNextInRoute={visit.id === nextPendingVisitId}
                 isSkipped={visit.status === 'skipped'}
                 onLongPress={
