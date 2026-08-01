@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { DiagnosticEntryRow } from '@/components/diagnostics/diagnostic-entry-row';
 import { ArrivalDiagnosticsPanel } from '@/components/diagnostics/arrival-diagnostics-panel';
+import { StoreWorkdayMapDiagnosticsPanel } from '@/components/diagnostics/store-workday-map-diagnostics-panel';
 import { LocationConfigReference } from '@/components/diagnostics/location-config-reference';
 import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
 import { useLocationDiagnostics } from '@/hooks/use-location-diagnostics';
@@ -150,6 +151,8 @@ export default function DiagnosticsScreen() {
         <LocationConfigReference settings={watchReference} />
 
         {__DEV__ ? <ArrivalDiagnosticsPanel /> : null}
+
+        {__DEV__ ? <StoreWorkdayMapDiagnosticsPanel /> : null}
 
         <Text style={styles.logHeading}>Location fix log (newest first)</Text>
       </View>

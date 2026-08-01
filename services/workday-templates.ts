@@ -21,6 +21,7 @@ import {
   selectMissingWorkdayTemplateStops,
   type ResolvedWorkdayTemplateStop,
 } from '@/utils/workday-template-utils';
+import { normalizeWorkdayTemplatesCatalog } from '@/utils/normalize-workday-template';
 
 export const WORKDAY_TEMPLATES_STORAGE_KEY = '@milemate/workday-templates';
 
@@ -57,7 +58,9 @@ function isWorkdayTemplate(value: unknown): value is WorkdayTemplate {
     Array.isArray(record.stops) &&
     record.stops.every(isWorkdayTemplateStop) &&
     typeof record.createdAt === 'string' &&
-    typeof record.updatedAt === 'string'
+    typeof record.updatedAt === 'string' &&
+    (record.mapColorKey === undefined || typeof record.mapColorKey === 'string') &&
+    (record.pinAbbreviation === undefined || typeof record.pinAbbreviation === 'string')
   );
 }
 
@@ -73,7 +76,7 @@ export function __resetWorkdayTemplatesStorageForTests(): void {
   workdayTemplatesStorageOverride = null;
 }
 
-async function readWorkdayTemplates(): Promise<WorkdayTemplate[]> {
+async function readWorkdayTemplatesRaw(): Promise<WorkdayTemplate[]> {
   if (workdayTemplatesStorageOverride) {
     return [...workdayTemplatesStorageOverride];
   }
@@ -95,6 +98,17 @@ async function readWorkdayTemplates(): Promise<WorkdayTemplate[]> {
   } catch {
     return [];
   }
+}
+
+async function readWorkdayTemplates(): Promise<WorkdayTemplate[]> {
+  const raw = await readWorkdayTemplatesRaw();
+  const { changed, templates } = normalizeWorkdayTemplatesCatalog(raw);
+
+  if (changed) {
+    await writeWorkdayTemplates(templates);
+  }
+
+  return templates;
 }
 
 async function writeWorkdayTemplates(templates: WorkdayTemplate[]): Promise<void> {

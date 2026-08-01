@@ -1,3 +1,7 @@
+import type { WorkdayMapColorKey } from '@/utils/workday-map-colors';
+
+export type { WorkdayMapColorKey };
+
 export type WorkdayTemplateStopSourceType = 'store' | 'manual';
 
 export type WorkdayTemplateStop = {
@@ -16,6 +20,10 @@ export type WorkdayTemplate = {
   stops: WorkdayTemplateStop[];
   createdAt: string;
   updatedAt: string;
+  /** Named palette key for Stores map markers and filter chips. */
+  mapColorKey?: WorkdayMapColorKey;
+  /** 1–2 character marker label; not weekday-specific. */
+  pinAbbreviation?: string;
 };
 
 export function createWorkdayTemplateId(): string {
