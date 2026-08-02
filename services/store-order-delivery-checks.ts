@@ -115,6 +115,10 @@ export async function createStoreOrderDeliveryCheck(
   return check;
 }
 
+export async function getAllStoreOrderDeliveryChecks(): Promise<StoreOrderDeliveryCheck[]> {
+  return readDeliveryChecks();
+}
+
 export async function getDeliveryChecksForOrder(
   orderId: string,
 ): Promise<StoreOrderDeliveryCheck[]> {

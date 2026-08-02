@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -6,8 +6,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 import { AppColors, AppSpacing } from '@/components/shared/app-theme';
 import {
@@ -15,43 +14,127 @@ import {
   StoresErrorState,
   StoresLoadingState,
 } from '@/components/stores/stores-content-states';
-import { StoresHeader } from '@/components/stores/stores-header';
-import { StoresLayout } from '@/components/stores/stores-layout';
-import { StoresList } from '@/components/stores/stores-list';
 import { StoresMapView } from '@/components/stores/stores-map-view';
-import type { StoresMapWorkdayFilter } from '@/utils/stores-map-model';
-import { StoresSearchField } from '@/components/stores/stores-search-field';
-import { StoresSegmentedControl } from '@/components/stores/stores-segmented-control';
 import { formatStoreWorkdayMembershipLabel } from '@/components/stores/stores-workday-membership-label';
 import { useGestureInteractionCleanup } from '@/hooks/use-gesture-interaction-cleanup';
 import { useStoresScreenData } from '@/hooks/use-stores-screen-data';
 import type { Store } from '@/types/store';
 import { getStoreDisplayName } from '@/utils/get-store-display-name';
 import { searchStores } from '@/utils/search-stores';
+import {
+  createDefaultStoresMapFilterState,
+  sanitizeStoresMapFilterState,
+  type StoresMapFilterState,
+} from '@/utils/stores-map-filter-state';
+import {
+  applyStoresMapNavigationIntentToFilterState,
+  clearStoresMapEntryReturnContext,
+  consumeStoresMapNavigationIntent,
+  createStoresMapInitialSelectionRequest,
+  noteNormalStoresTabEntry,
+  resolveStoresMapNavigationScope,
+  shouldShowStoresMapPreviewBackButton,
+  type StoresMapInitialSelectionRequest,
+  type StoresMapNavigationIntent,
+} from '@/utils/stores-map-navigation-intent';
 import { getTodayDateString } from '@/utils/today-date';
 
-export type StoresViewMode = 'list' | 'map';
 export type StoresScope = 'today' | 'all';
 
 export function StoresScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   useGestureInteractionCleanup('Stores');
 
-  const [viewMode, setViewMode] = useState<StoresViewMode>('list');
   const [scope, setScope] = useState<StoresScope>('today');
   const [searchQuery, setSearchQuery] = useState('');
-  const [workdayFilter, setWorkdayFilter] = useState<StoresMapWorkdayFilter>('all');
+  const [filterState, setFilterState] = useState<StoresMapFilterState>(
+    createDefaultStoresMapFilterState(),
+  );
+  const pendingNavigationIntentRef = useRef<StoresMapNavigationIntent | null>(null);
+  const appliedNavigationIntentRef = useRef<StoresMapNavigationIntent | null>(null);
+  const [initialSelectionRequest, setInitialSelectionRequest] =
+    useState<StoresMapInitialSelectionRequest | null>(null);
+  const [showPreviewBack, setShowPreviewBack] = useState(false);
 
   const {
     assignmentIndex,
+    deliveryChecks,
     handleDeleteStore,
     items,
     loadError,
     loadStatus,
+    orders,
     refresh,
+    resolvedVisits,
+    smartFilterIndex,
+    storeGroups,
     templates,
   } = useStoresScreenData();
+
+  useEffect(() => {
+    setFilterState((current) =>
+      sanitizeStoresMapFilterState({
+        availableGroupIds: new Set(storeGroups.map((group) => group.id)),
+        availableTemplateIds: new Set(templates.map((template) => template.id)),
+        state: current,
+      }),
+    );
+  }, [storeGroups, templates]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const staged = consumeStoresMapNavigationIntent();
+
+      if (staged) {
+        pendingNavigationIntentRef.current = staged;
+      } else {
+        noteNormalStoresTabEntry();
+      }
+
+      setShowPreviewBack(shouldShowStoresMapPreviewBackButton());
+
+      return () => {
+        clearStoresMapEntryReturnContext();
+        setShowPreviewBack(false);
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    if (loadStatus !== 'ready') {
+      return;
+    }
+
+    const intent = pendingNavigationIntentRef.current;
+
+    if (!intent || appliedNavigationIntentRef.current === intent) {
+      return;
+    }
+
+    pendingNavigationIntentRef.current = null;
+    appliedNavigationIntentRef.current = intent;
+    setScope(resolveStoresMapNavigationScope(intent));
+    setSearchQuery('');
+    setFilterState((current) =>
+      sanitizeStoresMapFilterState({
+        availableGroupIds: new Set(storeGroups.map((group) => group.id)),
+        availableTemplateIds: new Set(templates.map((template) => template.id)),
+        state: applyStoresMapNavigationIntentToFilterState(intent),
+      }),
+    );
+
+    if (intent.selectedStoreId) {
+      setInitialSelectionRequest(createStoresMapInitialSelectionRequest(intent.selectedStoreId));
+    }
+
+    setShowPreviewBack(shouldShowStoresMapPreviewBackButton());
+  }, [loadStatus, storeGroups, templates]);
+
+  const handleBackToWorkdayPreview = useCallback(() => {
+    clearStoresMapEntryReturnContext();
+    setShowPreviewBack(false);
+    router.navigate('/' as const);
+  }, [router]);
 
   const templatesById = useMemo(
     () => new Map(templates.map((template) => [template.id, template])),
@@ -85,15 +168,6 @@ export function StoresScreen() {
           (orderByStoreId.get(right.store.id) ?? 0),
       );
   }, [scopedItems, searchQuery]);
-
-  const libraryCount = items.length;
-  const scopedCount = scopedItems.length;
-  const headerSubtitle =
-    loadStatus === 'ready'
-      ? scope === 'today'
-        ? `${scopedCount} on today’s route · ${libraryCount} saved`
-        : `${libraryCount} saved store${libraryCount === 1 ? '' : 's'}`
-      : undefined;
 
   const membershipLabelForStore = useCallback(
     (storeId: string) =>
@@ -134,10 +208,6 @@ export function StoresScreen() {
   const clearSearch = useCallback(() => {
     setSearchQuery('');
   }, []);
-
-  useEffect(() => {
-    setWorkdayFilter('all');
-  }, [scope]);
 
   const emptyListState = useMemo(() => {
     const trimmedQuery = searchQuery.trim();
@@ -200,82 +270,56 @@ export function StoresScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.container, { paddingTop: insets.top }]}
+      style={styles.container}
     >
       <View style={styles.inner}>
-        <StoresHeader subtitle={headerSubtitle} />
-
-        <View style={styles.controls}>
-          <StoresSegmentedControl
-            onChange={setViewMode}
-            segments={[
-              {
-                accessibilityLabel: 'List view',
-                id: 'list',
-                label: 'List',
-              },
-              {
-                accessibilityLabel: 'Map view',
-                id: 'map',
-                label: 'Map',
-              },
-            ]}
-            value={viewMode}
-          />
-          <StoresSegmentedControl
-            onChange={setScope}
-            segments={[
-              {
-                accessibilityLabel: 'Stores on today’s route',
-                id: 'today',
-                label: 'Today',
-              },
-              {
-                accessibilityLabel: 'All saved stores',
-                id: 'all',
-                label: 'All Stores',
-              },
-            ]}
-            value={scope}
-          />
-          <StoresSearchField
-            onChangeText={setSearchQuery}
-            onClear={clearSearch}
-            value={searchQuery}
-          />
-        </View>
-
-        <View style={styles.content}>
-          {showLoading ? <StoresLoadingState /> : null}
-          {showError && loadError ? (
+        {showLoading ? (
+          <View style={styles.stateWrap}>
+            <StoresLoadingState />
+          </View>
+        ) : null}
+        {showError && loadError ? (
+          <View style={styles.stateWrap}>
             <StoresErrorState
               message={loadError}
               onRetry={() => {
                 void refresh();
               }}
             />
-          ) : null}
-          {!showLoading && !showError && viewMode === 'list' ? (
-            <StoresList
-              deleteEnabled={scope === 'all'}
-              items={displayItems}
-              listEmptyComponent={emptyListState}
-              membershipLabelForStore={membershipLabelForStore}
-              onDeleteStore={confirmDeleteStore}
-              onOpenStore={openStore}
-            />
-          ) : null}
-          {!showLoading && !showError && viewMode === 'map' ? (
-            <StoresMapView
-              assignmentIndex={assignmentIndex}
-              items={displayItems}
-              onOpenStore={openStore}
-              onWorkdayFilterChange={setWorkdayFilter}
-              templates={templates}
-              workdayFilter={workdayFilter}
-            />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
+        {!showLoading && !showError ? (
+          <StoresMapView
+            assignmentIndex={assignmentIndex}
+            deleteEnabled={scope === 'all'}
+            deliveryChecks={deliveryChecks}
+            items={displayItems}
+            listEmptyComponent={emptyListState}
+            membershipLabelForStore={membershipLabelForStore}
+            onClearSearch={clearSearch}
+            onDeleteStore={confirmDeleteStore}
+            onOpenStore={openStore}
+            onScopeChange={setScope}
+            onSearchQueryChange={setSearchQuery}
+            scope={scope}
+            searchQuery={searchQuery}
+            filterState={filterState}
+            onFilterStateChange={setFilterState}
+            orders={orders}
+            resolvedVisits={resolvedVisits}
+            smartFilterIndex={smartFilterIndex}
+            storeGroups={storeGroups}
+            templates={templates}
+            onRefreshData={() => {
+              void refresh();
+            }}
+            initialSelectionRequest={initialSelectionRequest}
+            onBackToWorkdayPreview={
+              showPreviewBack ? handleBackToWorkdayPreview : undefined
+            }
+            showPreviewBack={showPreviewBack}
+          />
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -289,13 +333,9 @@ const styles = StyleSheet.create({
   inner: {
     flex: 1,
     paddingBottom: AppSpacing.tabBarContentHeight,
-    paddingHorizontal: StoresLayout.horizontalPadding,
   },
-  controls: {
-    gap: StoresLayout.contentGap,
-    marginBottom: StoresLayout.contentGap,
-  },
-  content: {
+  stateWrap: {
     flex: 1,
+    paddingHorizontal: 16,
   },
 });

@@ -92,6 +92,7 @@ import { getStartLocation, hasVisitStops } from '@/utils/route-state';
 import type { RouteLocation } from '@/types/route-location';
 import { subscribeDevResetHome } from '@/utils/dev-reset-home-signal';
 import type { SavedRoute } from '@/types/saved-route';
+import { stageWorkdayPreviewMissedDeliveryStoresMapIntent } from '@/services/stores-map-navigation-from-preview';
 import { prepareStartDayLocationRequirements } from '@/services/start-day-flow';
 
 /** Temporarily hidden while route summary and optimization UX are being redesigned. */
@@ -1217,7 +1218,12 @@ export default function TodayScreen() {
                   return;
                 }
 
-                router.push('/(tabs)/stores' as const);
+                void (async () => {
+                  await stageWorkdayPreviewMissedDeliveryStoresMapIntent({
+                    routeStoreIds: visits.map((visit) => visit.storeId),
+                  });
+                  router.push('/(tabs)/stores' as const);
+                })();
               }}
               onOpenStore={handleOpenStore}
               onStartDay={handleStartDay}

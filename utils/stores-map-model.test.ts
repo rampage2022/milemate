@@ -10,8 +10,20 @@ import {
   filterStoresMapItemsByWorkday,
   storeHasMappableCoordinates,
 } from '@/utils/stores-map-model';
+import { createDefaultStoresMapFilterState } from '@/utils/stores-map-filter-state';
+import { buildStoresMapSmartFilterIndex } from '@/utils/stores-map-smart-filter-index';
 import { buildStoreWorkdayAssignmentIndex } from '@/utils/store-workday-assignment-index';
 import { createWorkdayTemplateStopId } from '@/types/workday-template';
+
+function emptySmartIndex(storeIds: string[] = []) {
+  return buildStoresMapSmartFilterIndex({
+    orders: [],
+    storeIds,
+    visits: [],
+  });
+}
+
+const defaultFilterState = createDefaultStoresMapFilterState();
 
 function store(partial: Partial<Store> & Pick<Store, 'id' | 'name'>): Store {
   const now = Date.now();
@@ -147,7 +159,9 @@ async function runTests() {
     assignmentIndex,
     items,
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
 
   assert.equal(allModel.counts.total, 6);
@@ -158,17 +172,14 @@ async function runTests() {
 
   const assignedMarker = allModel.markers.find((marker) => marker.storeId === 'store-a');
   assert.ok(assignedMarker);
-  assert.equal(assignedMarker?.pinAbbreviation, 'M');
   assert.equal(assignedMarker?.markerBackground, '#34C759');
 
   const unassignedMarker = allModel.markers.find((marker) => marker.storeId === 'store-unassigned');
   assert.ok(unassignedMarker);
-  assert.equal(unassignedMarker?.pinAbbreviation, 'U');
   assert.equal(unassignedMarker?.markerBackground, '#636366');
 
   const sharedMarker = allModel.markers.find((marker) => marker.storeId === 'store-shared');
   assert.ok(sharedMarker);
-  assert.equal(sharedMarker?.pinAbbreviation, 'RA');
   assert.equal(sharedMarker?.markerBackground, '#FF9500');
 
   const sharedPreview = allModel.previewByStoreId['store-shared'];
@@ -208,10 +219,11 @@ async function runTests() {
     assignmentIndex: multiIndex,
     items: [items[2]!],
     templates: templatesWithMulti,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(multiModel.previewByStoreId['store-shared']?.membershipRows.length, 2);
-  assert.equal(multiModel.markers[0]?.pinAbbreviation, 'RA');
   assert.equal(multiModel.markers[0]?.markerBackground, '#FF9500');
 
   const mondayOnly = filterStoresMapItemsByWorkday({
@@ -236,7 +248,9 @@ async function runTests() {
     assignmentIndex,
     items: searchScoped,
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(searchModel.counts.total, 1);
   assert.equal(searchModel.counts.onMap, 1);
@@ -245,7 +259,9 @@ async function runTests() {
     assignmentIndex,
     items: items.filter((item) => item.store.id !== 'store-a'),
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(removedSelectionModel.previewByStoreId['store-a'], undefined);
 
@@ -262,7 +278,9 @@ async function runTests() {
     assignmentIndex,
     items: [],
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(emptyModel.emptyKind, 'no_stores_in_scope');
 
@@ -270,7 +288,9 @@ async function runTests() {
     assignmentIndex,
     items: [items[4]!, items[5]!],
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(noCoordsModel.emptyKind, 'no_mappable_stores');
   assert.equal(noCoordsModel.counts.onMap, 0);
@@ -290,20 +310,65 @@ async function runTests() {
     assignmentIndex,
     items: aliasItems,
     templates,
-    workdayFilter: 'all',
+    filterState: defaultFilterState,
+    groups: [],
+    smartFilterIndex: emptySmartIndex(['store-a', 'store-b']),
   });
   assert.equal(aliasModel.markers[0]?.storeId, 'store-a');
-  assert.equal(aliasModel.markers[0]?.pinAbbreviation, 'M');
 
   const keyA = computeStoresMapFitRegionKey({
-    filter: 'all',
+    filterState: defaultFilterState,
     markerStoreIds: ['b', 'a'],
   });
   const keyB = computeStoresMapFitRegionKey({
-    filter: 'all',
+    filterState: defaultFilterState,
     markerStoreIds: ['a', 'b'],
   });
   assert.equal(keyA, keyB);
+
+  const springfield = {
+    store: store({
+      id: 'store-demo-springfield',
+      name: 'Springfield Demo',
+      latitude: 39.7817,
+      longitude: -89.6501,
+    }),
+    visit: null,
+  };
+  const dallasOnlyItems = [items[0]!, items[1]!];
+  const missedFilterState = {
+    ...defaultFilterState,
+    enabledSmartFilters: ['missed_delivery' as const],
+  };
+  const missedIndex = buildStoresMapSmartFilterIndex({
+    checksByOrderId: {},
+    orders: [
+      {
+        createdAt: '2026-07-01T00:00:00.000Z',
+        expectedDeliveryDate: '07-28-26',
+        id: 'order-missed-a',
+        placedAt: '2026-07-01T00:00:00.000Z',
+        status: 'pending',
+        storeId: 'store-a',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    ],
+    referenceDate: new Date('2026-08-01T12:00:00'),
+    storeIds: ['store-a', 'store-b', 'store-demo-springfield'],
+    visits: [],
+  });
+  const filteredFitModel = buildStoresMapModel({
+    assignmentIndex,
+    items: [...dallasOnlyItems, springfield],
+    templates,
+    filterState: missedFilterState,
+    groups: [],
+    smartFilterIndex: missedIndex,
+  });
+
+  assert.equal(filteredFitModel.markers.length, 1);
+  assert.equal(filteredFitModel.markers[0]?.storeId, 'store-a');
+  assert.ok(filteredFitModel.fitCoordinates.every((point) => point.latitude > 30));
 
   console.log('stores-map-model tests passed');
 }

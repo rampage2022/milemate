@@ -10,18 +10,20 @@ type Segment<T extends string> = {
 };
 
 type StoresSegmentedControlProps<T extends string> = {
+  compact?: boolean;
   onChange: (value: T) => void;
   segments: Segment<T>[];
   value: T;
 };
 
 export function StoresSegmentedControl<T extends string>({
+  compact = false,
   onChange,
   segments,
   value,
 }: StoresSegmentedControlProps<T>) {
   return (
-    <View accessibilityRole="tablist" style={styles.track}>
+    <View accessibilityRole="tablist" style={[styles.track, compact && styles.trackCompact]}>
       {segments.map((segment) => {
         const selected = segment.id === value;
 
@@ -36,13 +38,18 @@ export function StoresSegmentedControl<T extends string>({
             }}
             style={({ pressed }) => [
               styles.segment,
+              compact && styles.segmentCompact,
               selected && styles.segmentSelected,
               pressed && styles.pressed,
             ]}
           >
             <Text
               allowFontScaling
-              style={[styles.label, selected && styles.labelSelected]}
+              style={[
+                styles.label,
+                compact && styles.labelCompact,
+                selected && styles.labelSelected,
+              ]}
             >
               {segment.label}
             </Text>
@@ -63,6 +70,11 @@ const styles = StyleSheet.create({
     minHeight: StoresLayout.segmentedHeight,
     padding: 3,
   },
+  trackCompact: {
+    borderRadius: 10,
+    minHeight: 32,
+    padding: 2,
+  },
   segment: {
     alignItems: 'center',
     borderRadius: 10,
@@ -71,6 +83,11 @@ const styles = StyleSheet.create({
     minHeight: AppSpacing.minTouchTarget - 8,
     paddingHorizontal: 8,
   },
+  segmentCompact: {
+    borderRadius: 8,
+    minHeight: 28,
+    paddingHorizontal: 6,
+  },
   segmentSelected: {
     backgroundColor: AppColors.card,
   },
@@ -78,6 +95,9 @@ const styles = StyleSheet.create({
     color: AppColors.textSecondary,
     fontSize: 14,
     fontWeight: '600',
+  },
+  labelCompact: {
+    fontSize: 13,
   },
   labelSelected: {
     color: AppColors.textPrimary,

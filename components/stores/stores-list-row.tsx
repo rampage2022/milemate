@@ -9,14 +9,18 @@ import { getStoreDisplayName } from '@/utils/get-store-display-name';
 import type { StoreVisit } from '@/types/store-visit';
 
 type StoresListRowProps = {
+  onOpenStore?: () => void;
   onPress: () => void;
+  selected?: boolean;
   store: Store;
   visit: StoreVisit | null;
   workdayMembershipLabel?: string | null;
 };
 
 export function StoresListRow({
+  onOpenStore,
   onPress,
+  selected = false,
   store,
   visit,
   workdayMembershipLabel,
@@ -42,8 +46,13 @@ export function StoresListRow({
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ selected }}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.row,
+        selected && styles.rowSelected,
+        pressed && styles.pressed,
+      ]}
     >
       <View style={styles.copy}>
         <View style={styles.titleRow}>
@@ -71,13 +80,30 @@ export function StoresListRow({
           </Text>
         ) : null}
       </View>
-      <Ionicons
-        accessibilityElementsHidden
-        color={AppColors.textMuted}
-        importantForAccessibility="no-hide-descendants"
-        name="chevron-forward"
-        size={18}
-      />
+      {onOpenStore ? (
+        <Pressable
+          accessibilityLabel={`Open ${displayName}`}
+          accessibilityRole="button"
+          hitSlop={6}
+          onPress={(event) => {
+            event.stopPropagation();
+            onOpenStore();
+          }}
+          style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}
+        >
+          <Text allowFontScaling style={styles.openButtonText}>
+            Open
+          </Text>
+        </Pressable>
+      ) : (
+        <Ionicons
+          accessibilityElementsHidden
+          color={AppColors.textMuted}
+          importantForAccessibility="no-hide-descendants"
+          name="chevron-forward"
+          size={18}
+        />
+      )}
     </Pressable>
   );
 }
@@ -94,6 +120,25 @@ const styles = StyleSheet.create({
     minHeight: StoresLayout.listRowMinHeight,
     paddingHorizontal: StoresLayout.listRowPaddingH,
     paddingVertical: StoresLayout.listRowPaddingV,
+  },
+  rowSelected: {
+    borderColor: AppColors.blue,
+    borderWidth: 1.5,
+  },
+  openButton: {
+    alignItems: 'center',
+    borderColor: AppColors.border,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 52,
+    paddingHorizontal: 8,
+  },
+  openButtonText: {
+    color: AppColors.blue,
+    fontSize: 13,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.92,

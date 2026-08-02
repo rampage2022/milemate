@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -5,12 +6,20 @@ import { AppColors } from '@/components/shared/app-theme';
 import { StoresLayout } from '@/components/stores/stores-layout';
 
 type StoresSearchFieldProps = {
+  autoFocus?: boolean;
+  compact?: boolean;
+  inputRef?: RefObject<TextInput | null>;
+  onBlur?: () => void;
   onChangeText: (value: string) => void;
   onClear: () => void;
   value: string;
 };
 
 export function StoresSearchField({
+  autoFocus = false,
+  compact = false,
+  inputRef,
+  onBlur,
   onChangeText,
   onClear,
   value,
@@ -18,7 +27,7 @@ export function StoresSearchField({
   const showClear = value.trim().length > 0;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
       <Ionicons
         accessibilityElementsHidden
         color={AppColors.textMuted}
@@ -33,12 +42,15 @@ export function StoresSearchField({
         allowFontScaling
         autoCapitalize="none"
         autoCorrect={false}
+        autoFocus={autoFocus}
         clearButtonMode="never"
+        onBlur={onBlur}
         onChangeText={onChangeText}
         placeholder="Search stores"
         placeholderTextColor={AppColors.textMuted}
+        ref={inputRef}
         returnKeyType="search"
-        style={styles.input}
+        style={[styles.input, compact && styles.inputCompact]}
         value={value}
       />
       {showClear ? (
@@ -63,9 +75,13 @@ const styles = StyleSheet.create({
     borderColor: AppColors.border,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
     flexDirection: 'row',
     minHeight: StoresLayout.searchHeight,
     paddingHorizontal: 12,
+  },
+  wrapCompact: {
+    minHeight: 44,
   },
   leadingIcon: {
     marginRight: 8,
@@ -76,6 +92,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: StoresLayout.searchHeight,
     paddingVertical: 8,
+  },
+  inputCompact: {
+    minHeight: 44,
+    paddingVertical: 4,
   },
   clearButton: {
     marginLeft: 4,

@@ -18,6 +18,24 @@ import {
   type WorkdayMapColorStyle,
 } from '@/utils/workday-map-colors';
 
+import type { StoreGroup } from '@/types/store-group';
+import {
+  filterStoresMapItems,
+  computeStoresMapWorkdayFilterKey,
+  type StoresMapFilterState,
+} from '@/utils/stores-map-filter-state';
+import {
+  filterStoresMapItemsByWorkdayState,
+  type StoresMapWorkdayFilterState,
+} from '@/utils/stores-map-workday-filter-state';
+import type { StoresMapSmartFilterIndex } from '@/utils/stores-map-smart-filter-index';
+import {
+  pickStoresMapContextLabels,
+  resolveLastCompletedVisitMs,
+  type StoresMapContextLabel,
+} from '@/utils/stores-map-context-labels';
+
+/** @deprecated Single-select filter id; use StoresMapWorkdayFilterState for multi-select. */
 export type StoresMapWorkdayFilter = 'all' | 'unassigned' | `workday:${string}`;
 
 export type StoresMapScopeItem = {
@@ -30,8 +48,6 @@ export type StoresMapMarkerModel = {
   latitude: number;
   longitude: number;
   markerBackground: string;
-  markerForeground: string;
-  pinAbbreviation: string;
   storeId: string;
 };
 
@@ -43,6 +59,7 @@ export type StoresMapPreviewWorkdayRow = {
 
 export type StoresMapPreviewModel = {
   address: string;
+  contextLabels: StoresMapContextLabel[];
   membershipRows: StoresMapPreviewWorkdayRow[];
   primaryWorkdayLabel: string;
   store: Store;
@@ -53,7 +70,7 @@ export type StoresMapPreviewModel = {
 export type StoresMapFilterChipModel = {
   accessibilityLabel: string;
   colorStyle: WorkdayMapColorStyle;
-  filterId: StoresMapWorkdayFilter;
+  filterId: string;
   label: string;
 };
 
@@ -79,9 +96,11 @@ export type StoresMapModel = {
 
 export type BuildStoresMapModelInput = {
   assignmentIndex: StoreWorkdayAssignmentIndex | null;
+  filterState: StoresMapFilterState;
+  groups: StoreGroup[];
   items: StoresMapScopeItem[];
+  smartFilterIndex: StoresMapSmartFilterIndex;
   templates: WorkdayTemplate[];
-  workdayFilter: StoresMapWorkdayFilter;
 };
 
 const SINGLE_STORE_REGION_DELTA = {
@@ -151,24 +170,11 @@ export function buildStoreMarkerAccessibilityLabel(input: {
   return `${name}, assigned to ${input.workdayNames[0]} and ${input.workdayNames.length - 1} more workdays`;
 }
 
-function deriveUnassignedPinAbbreviation(store: Store): string {
-  const name = getStoreDisplayName(store).trim();
-
-  if (name.length === 0) {
-    return '•';
-  }
-
-  return name.slice(0, 1).toUpperCase();
-}
-
 function resolveMarkerStyleForStore(input: {
   assignmentIndex: StoreWorkdayAssignmentIndex | null;
   store: Store;
   templatesById: Map<string, WorkdayTemplate>;
-}): Pick<
-  StoresMapMarkerModel,
-  'markerBackground' | 'markerForeground' | 'pinAbbreviation'
-> {
+}): Pick<StoresMapMarkerModel, 'markerBackground'> {
   const { names, primaryTemplateId } = resolveWorkdayNamesForStore({
     assignmentIndex: input.assignmentIndex,
     storeId: input.store.id,
@@ -178,8 +184,6 @@ function resolveMarkerStyleForStore(input: {
   if (!primaryTemplateId || names.length === 0) {
     return {
       markerBackground: UNASSIGNED_STORE_MAP_STYLE.markerBackground,
-      markerForeground: UNASSIGNED_STORE_MAP_STYLE.markerForeground,
-      pinAbbreviation: deriveUnassignedPinAbbreviation(input.store),
     };
   }
 
@@ -189,20 +193,13 @@ function resolveMarkerStyleForStore(input: {
   if (!colorKey || !isWorkdayMapColorKey(colorKey)) {
     return {
       markerBackground: UNASSIGNED_STORE_MAP_STYLE.markerBackground,
-      markerForeground: UNASSIGNED_STORE_MAP_STYLE.markerForeground,
-      pinAbbreviation: deriveUnassignedPinAbbreviation(input.store),
     };
   }
 
   const colorStyle = getWorkdayMapColorStyle(colorKey);
-  const abbreviation =
-    primaryTemplate?.pinAbbreviation?.trim().slice(0, 2) ||
-    deriveUnassignedPinAbbreviation(input.store);
 
   return {
     markerBackground: colorStyle.markerBackground,
-    markerForeground: colorStyle.markerForeground,
-    pinAbbreviation: abbreviation,
   };
 }
 
@@ -216,24 +213,25 @@ export function filterStoresMapItemsByWorkday(input: {
   }
 
   if (input.workdayFilter === 'unassigned') {
-    return input.items.filter((item) => {
-      const assignment = input.assignmentIndex?.byStoreId.get(item.store.id);
-
-      return !assignment || assignment.workdayIds.length === 0;
+    return filterStoresMapItemsByWorkdayState({
+      assignmentIndex: input.assignmentIndex,
+      items: input.items,
+      state: { includeUnassigned: true, selectedWorkdayIds: [] },
     });
   }
 
   const templateId = input.workdayFilter.replace(/^workday:/, '');
 
-  return input.items.filter((item) => {
-    const assignment = input.assignmentIndex?.byStoreId.get(item.store.id);
-
-    return assignment?.workdayIds.includes(templateId) ?? false;
+  return filterStoresMapItemsByWorkdayState({
+    assignmentIndex: input.assignmentIndex,
+    items: input.items,
+    state: { includeUnassigned: false, selectedWorkdayIds: [templateId] },
   });
 }
 
 export function buildStoresMapFilterChips(input: {
   assignmentIndex: StoreWorkdayAssignmentIndex | null;
+  groups: StoreGroup[];
   items: StoresMapScopeItem[];
   templates: WorkdayTemplate[];
 }): StoresMapFilterChipModel[] {
@@ -298,6 +296,39 @@ export function buildStoresMapFilterChips(input: {
   return [...chips, ...workdayChips];
 }
 
+export function buildStoresMapGroupFilterChips(groups: StoreGroup[]): StoresMapFilterChipModel[] {
+  return groups.map((group) => {
+    const colorKey =
+      group.colorKey && isWorkdayMapColorKey(group.colorKey) ? group.colorKey : 'blue';
+    const colorStyle = getWorkdayMapColorStyle(colorKey);
+
+    return {
+      accessibilityLabel: `Filter by ${group.name} group`,
+      colorStyle,
+      filterId: `group:${group.id}`,
+      label: group.name,
+    };
+  });
+}
+
+export function buildStoresMapSmartFilterChips(): StoresMapFilterChipModel[] {
+  const neutral = UNASSIGNED_STORE_MAP_STYLE;
+
+  return (
+    [
+      ['smart:delivery_soon', 'Delivery Soon'],
+      ['smart:missed_delivery', 'Missed Delivery'],
+      ['smart:no_visit_7d', 'No Visit 7+ Days'],
+      ['smart:no_delivery_7d', 'No Delivery 7+ Days'],
+    ] as const
+  ).map(([filterId, label]) => ({
+    accessibilityLabel: `Smart filter ${label}`,
+    colorStyle: neutral,
+    filterId,
+    label,
+  }));
+}
+
 export function computeStoresMapFitRegion(coordinates: MapLatLng[]): Region {
   if (coordinates.length === 0) {
     return DEFAULT_FALLBACK_REGION;
@@ -318,15 +349,24 @@ export function computeStoresMapFitRegion(coordinates: MapLatLng[]): Region {
 }
 
 export function computeStoresMapFitRegionKey(input: {
-  filter: StoresMapWorkdayFilter;
+  filterState: StoresMapFilterState;
   markerStoreIds: string[];
 }): string {
-  return `${input.filter}|${[...input.markerStoreIds].sort().join(',')}`;
+  const smartKey = input.filterState.enabledSmartFilters.join(',');
+  const groupKey = input.filterState.selectedStoreGroupIds.join(',');
+
+  return `${computeStoresMapWorkdayFilterKey({
+    includeUnassigned: input.filterState.includeUnassigned,
+    selectedWorkdayIds: input.filterState.selectedWorkdayIds,
+  })}|${groupKey}|${smartKey}|${[...input.markerStoreIds].sort().join(',')}`;
 }
 
 export function buildStoresMapPreviewModel(input: {
+  activeGroupNames: string[];
   assignmentIndex: StoreWorkdayAssignmentIndex | null;
+  enabledSmartFilters: StoresMapFilterState['enabledSmartFilters'];
   item: StoresMapScopeItem;
+  smartFilterIndex: StoresMapSmartFilterIndex;
   templatesById: Map<string, WorkdayTemplate>;
 }): StoresMapPreviewModel {
   const { store, visit } = input.item;
@@ -360,6 +400,12 @@ export function buildStoresMapPreviewModel(input: {
 
   return {
     address: formatStoreAddress(store),
+    contextLabels: pickStoresMapContextLabels({
+      activeGroupNames: input.activeGroupNames,
+      enabledSmartFilters: input.enabledSmartFilters,
+      index: input.smartFilterIndex,
+      storeId: store.id,
+    }),
     membershipRows,
     primaryWorkdayLabel: membershipRows.length > 0 ? primaryWorkdayLabel : 'Unassigned',
     store,
@@ -368,12 +414,25 @@ export function buildStoresMapPreviewModel(input: {
   };
 }
 
+function resolveActiveGroupNamesForStore(
+  groups: StoreGroup[],
+  storeId: string,
+): string[] {
+  return groups
+    .filter((group) => group.storeIds.includes(storeId))
+    .map((group) => group.name.trim())
+    .filter((name) => name.length > 0);
+}
+
 export function buildStoresMapModel(input: BuildStoresMapModelInput): StoresMapModel {
   const templatesById = templatesByIdMap(input.templates);
-  const filteredItems = filterStoresMapItemsByWorkday({
+  const groupsById = new Map(input.groups.map((group) => [group.id, group]));
+  const filteredItems = filterStoresMapItems({
     assignmentIndex: input.assignmentIndex,
+    groupsById,
     items: input.items,
-    workdayFilter: input.workdayFilter,
+    smartFilterIndex: input.smartFilterIndex,
+    state: input.filterState,
   });
 
   const missingLocationStores: Store[] = [];
@@ -381,9 +440,14 @@ export function buildStoresMapModel(input: BuildStoresMapModelInput): StoresMapM
   const previewByStoreId: Record<string, StoresMapPreviewModel> = {};
 
   for (const item of filteredItems) {
+    const activeGroupNames = resolveActiveGroupNamesForStore(input.groups, item.store.id);
+
     previewByStoreId[item.store.id] = buildStoresMapPreviewModel({
+      activeGroupNames,
       assignmentIndex: input.assignmentIndex,
+      enabledSmartFilters: input.filterState.enabledSmartFilters,
       item,
+      smartFilterIndex: input.smartFilterIndex,
       templatesById,
     });
 
@@ -439,13 +503,14 @@ export function buildStoresMapModel(input: BuildStoresMapModelInput): StoresMapM
     emptyKind,
     filterChips: buildStoresMapFilterChips({
       assignmentIndex: input.assignmentIndex,
+      groups: input.groups,
       items: input.items,
       templates: input.templates,
     }),
     fitCoordinates,
     fitRegion: computeStoresMapFitRegion(fitCoordinates),
     fitRegionKey: computeStoresMapFitRegionKey({
-      filter: input.workdayFilter,
+      filterState: input.filterState,
       markerStoreIds: markers.map((marker) => marker.storeId),
     }),
     markers,

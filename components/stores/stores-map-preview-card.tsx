@@ -6,15 +6,20 @@ import type { StoresMapPreviewModel } from '@/utils/stores-map-model';
 import { getStoreDisplayName } from '@/utils/get-store-display-name';
 
 type StoresMapPreviewCardProps = {
+  embedded?: boolean;
   onOpenStore: () => void;
   preview: StoresMapPreviewModel;
 };
 
-export function StoresMapPreviewCard({ onOpenStore, preview }: StoresMapPreviewCardProps) {
+export function StoresMapPreviewCard({
+  embedded = false,
+  onOpenStore,
+  preview,
+}: StoresMapPreviewCardProps) {
   const storeName = getStoreDisplayName(preview.store);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, embedded && styles.cardEmbedded]}>
       <View style={styles.copy}>
         <View style={styles.titleRow}>
           <Text allowFontScaling numberOfLines={2} style={styles.title}>
@@ -30,6 +35,15 @@ export function StoresMapPreviewCard({ onOpenStore, preview }: StoresMapPreviewC
         <Text allowFontScaling numberOfLines={2} style={styles.address}>
           {preview.address}
         </Text>
+        {preview.contextLabels.length > 0 ? (
+          <View style={styles.contextRow}>
+            {preview.contextLabels.map((label) => (
+              <Text allowFontScaling key={`${label.kind}-${label.text}`} style={styles.contextChip}>
+                {label.text}
+              </Text>
+            ))}
+          </View>
+        ) : null}
         <Text allowFontScaling style={styles.primaryWorkday}>
           {preview.membershipRows.length > 0
             ? `Primary workday: ${preview.primaryWorkdayLabel}`
@@ -79,6 +93,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
   },
+  cardEmbedded: {
+    bottom: undefined,
+    left: undefined,
+    position: 'relative',
+    right: undefined,
+    shadowOpacity: 0,
+  },
   copy: {
     gap: 4,
   },
@@ -104,6 +125,24 @@ const styles = StyleSheet.create({
     color: AppColors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
+  },
+  contextRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  contextChip: {
+    backgroundColor: AppColors.backgroundElevated,
+    borderColor: AppColors.border,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: AppColors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   primaryWorkday: {
     color: AppColors.blue,

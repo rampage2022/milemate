@@ -1,32 +1,31 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppColors } from '@/components/shared/app-theme';
 
-const MARKER_SIZE = 36;
+/** Diameter of the map marker circle (unselected). */
+export const STORES_MAP_MARKER_CIRCLE_SIZE = 26;
+/** Frame size when the selection ring is shown. */
+export const STORES_MAP_MARKER_SELECTED_SIZE = 40;
+const MARKER_CORE_DOT_SIZE = 8;
 
 type StoresMapMarkerGlyphProps = {
-  abbreviation: string;
   backgroundColor: string;
-  foregroundColor: string;
+  selected?: boolean;
 };
 
 export function StoresMapMarkerGlyph({
-  abbreviation,
   backgroundColor,
-  foregroundColor,
+  selected = false,
 }: StoresMapMarkerGlyphProps) {
   return (
-    <View collapsable={false} pointerEvents="none" style={styles.frame}>
+    <View
+      collapsable={false}
+      pointerEvents="none"
+      style={[styles.frame, selected && styles.frameSelected]}
+    >
+      {selected ? <View style={styles.selectionRing} /> : null}
       <View style={[styles.circle, { backgroundColor }]}>
-        <Text
-          allowFontScaling={false}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          numberOfLines={1}
-          style={[styles.label, { color: foregroundColor }]}
-        >
-          {abbreviation}
-        </Text>
+        <View style={styles.centerDot} />
       </View>
     </View>
   );
@@ -35,30 +34,44 @@ export function StoresMapMarkerGlyph({
 const styles = StyleSheet.create({
   frame: {
     alignItems: 'center',
-    height: MARKER_SIZE,
+    height: STORES_MAP_MARKER_CIRCLE_SIZE,
     justifyContent: 'center',
-    width: MARKER_SIZE,
+    width: STORES_MAP_MARKER_CIRCLE_SIZE,
+  },
+  frameSelected: {
+    height: STORES_MAP_MARKER_SELECTED_SIZE,
+    width: STORES_MAP_MARKER_SELECTED_SIZE,
+  },
+  selectionRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderColor: AppColors.textPrimary,
+    borderRadius: STORES_MAP_MARKER_SELECTED_SIZE / 2,
+    borderWidth: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
   },
   circle: {
     alignItems: 'center',
-    borderColor: 'rgba(255,255,255,0.85)',
-    borderRadius: MARKER_SIZE / 2,
+    borderColor: 'rgba(255,255,255,0.94)',
+    borderRadius: STORES_MAP_MARKER_CIRCLE_SIZE / 2,
     borderWidth: 2,
-    height: MARKER_SIZE,
+    height: STORES_MAP_MARKER_CIRCLE_SIZE,
     justifyContent: 'center',
-    minWidth: MARKER_SIZE,
-    paddingHorizontal: 4,
-    shadowColor: AppColors.background,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.35,
-    shadowRadius: 3,
+    shadowRadius: 2,
+    width: STORES_MAP_MARKER_CIRCLE_SIZE,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    textAlign: 'center',
+  centerDot: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: MARKER_CORE_DOT_SIZE / 2,
+    height: MARKER_CORE_DOT_SIZE,
+    width: MARKER_CORE_DOT_SIZE,
   },
 });
 
-export const STORES_MAP_MARKER_SIZE = MARKER_SIZE;
+/** @deprecated Use {@link STORES_MAP_MARKER_CIRCLE_SIZE}. */
+export const STORES_MAP_MARKER_SIZE = STORES_MAP_MARKER_CIRCLE_SIZE;
