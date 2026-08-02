@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { DeliveryStatusSheet } from '@/components/store/delivery-status-sheet';
 import { VisitLogInfoSheet } from '@/components/store/visit-log-info-sheet';
+import { VisitLogSkipSheet, suggestVisitLogSkipReason } from '@/components/store/visit-log-skip-sheet';
+import { VisitLogStoreEditSheet } from '@/components/store/visit-log-store-edit-sheet';
 import { VisitLogScreen } from '@/components/store/visit-log-screen';
 import { LastVisitCard } from '@/components/store/last-visit-card';
 import { OrderLogSheet } from '@/components/store/order-log-sheet';
@@ -39,12 +42,19 @@ import { ensureStoreReverseGeocodedAddress } from '@/services/store-display-addr
 import { getStoreById } from '@/services/stores';
 import {
   addVisitNote,
+  applyVisitPromotion,
   checkInVisit,
+  getAllResolvedVisits,
   getLastCompletedVisitForStore,
   getVisitForStoreOnDate,
   resolveAfterCompletionMode,
   setVisitAfterCompletionOverride,
+  skipVisit,
+  undoActiveCheckIn,
 } from '@/services/store-visits';
+import { getStoreImportIdRemap } from '@/services/store-import-id-aliases';
+import { buildVisitLogRecentVisits } from '@/utils/visit-log-recent-visits';
+import type { VisitLogRecentVisitRow } from '@/utils/visit-log-recent-visits';
 import {
   cycleAfterCompletionMode,
   type AfterCompletionMode,
@@ -52,8 +62,13 @@ import {
 import { formatStoreAddress, type Store } from '@/types/store';
 import type { StoreOrder } from '@/types/store-order';
 import type { StoreOrderDeliveryCheck } from '@/types/store-order-delivery-check';
-import type { StoreVisit } from '@/types/store-visit';
+import type { StoreVisit, VisitSkipReason } from '@/types/store-visit';
 import { getTodayDateString } from '@/utils/today-date';
+import { getLocalMinuteOfDay } from '@/utils/minute-of-day';
+import { getStoreReceivingRestrictionForDisplay } from '@/utils/store-receiving-restriction';
+import { isReceivingRestrictionPassedForSkip } from '@/utils/visit-log-receiving-callout';
+import { isVisitLogActiveRouteStop } from '@/utils/visit-log-primary-actions';
+import { buildStoreOpenStatusPresentation, normalizeStoreOperatingHours } from '@/utils/store-operating-hours-presentation';
 
 type StoreOverviewScreenProps = {
   storeId: string;
@@ -80,9 +95,11 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
   const [noteText, setNoteText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [visitLogInfoSheet, setVisitLogInfoSheet] = useState<
-    'last-visit' | 'store-info' | null
-  >(null);
+  const [visitLogInfoSheet, setVisitLogInfoSheet] = useState<'last-visit' | null>(null);
+  const [isVisitLogStoreEditVisible, setIsVisitLogStoreEditVisible] = useState(false);
+  const [isSkipSheetVisible, setIsSkipSheetVisible] = useState(false);
+  const [recentVisits, setRecentVisits] = useState<VisitLogRecentVisitRow[]>([]);
+  const [recentVisitsTotalCount, setRecentVisitsTotalCount] = useState(0);
 
   const refreshOrders = useCallback(async () => {
     const [loadedPending, loadedHistory] = await Promise.all([
@@ -114,12 +131,40 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
       }
       const loadedVisit = await getVisitForStoreOnDate(storeId, getTodayDateString());
       const loadedLastVisit = await getLastCompletedVisitForStore(storeId, loadedVisit);
+      const [resolvedVisits, storeIdRemap, loadedPending, loadedHistory] = await Promise.all([
+        getAllResolvedVisits(),
+        getStoreImportIdRemap(),
+        getPendingStoreOrders(storeId),
+        getOrderHistoryForStore(storeId),
+      ]);
 
       setStore(loadedStore);
       setVisit(loadedVisit);
       setLastCompletedVisit(loadedLastVisit);
+
+      const checksByOrderId: Record<string, StoreOrderDeliveryCheck | null> = {};
+
+      await Promise.all(
+        loadedPending.map(async (order) => {
+          checksByOrderId[order.id] = await getLatestNotReceivedCheckForOrder(order.id);
+        }),
+      );
+
+      setPendingOrders(loadedPending);
+      setOrderHistory(loadedHistory);
+      setLatestNotReceivedChecksByOrderId(checksByOrderId);
+
+      const recent = buildVisitLogRecentVisits({
+        activeVisit: loadedVisit,
+        canonicalStoreId: storeId,
+        orders: loadedHistory,
+        storeIdRemap,
+        visits: resolvedVisits,
+      });
+      setRecentVisits(recent.rows);
+      setRecentVisitsTotalCount(recent.totalMatchingCount);
+
       await ensureStoreOrderStoreIdRecovery();
-      await refreshOrders();
 
       if (loadedVisit) {
         setAfterCompletionMode(await resolveAfterCompletionMode(loadedVisit));
@@ -147,8 +192,114 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
     setIsSaving(true);
 
     try {
-      const updated = await checkInVisit(visit.id);
-      setVisit(updated);
+      const updated = await checkInVisit(visit.id, { source: 'manual' });
+      if (updated) {
+        setVisit(updated);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUndoCheckIn = () => {
+    if (!visit) {
+      return;
+    }
+
+    Alert.alert(
+      'Undo check-in?',
+      'This stop will return to its current state and the visit timer will clear.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo Check-In',
+          onPress: () => {
+            void (async () => {
+              setIsSaving(true);
+
+              try {
+                const updated = await undoActiveCheckIn(visit.id);
+                if (updated) {
+                  setVisit(updated);
+                }
+              } finally {
+                setIsSaving(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  function resolveSkipSuggestion() {
+    if (!store) {
+      return null;
+    }
+
+    const storeStatus = buildStoreOpenStatusPresentation({
+      hours: normalizeStoreOperatingHours(store),
+      nowMinuteOfDay: getLocalMinuteOfDay(),
+    });
+
+    return suggestVisitLogSkipReason({
+      storeIsClosed: storeStatus.kind === 'closed',
+      receivingPassed: isReceivingRestrictionPassedForSkip({
+        restriction: getStoreReceivingRestrictionForDisplay(store),
+        nowMinuteOfDay: getLocalMinuteOfDay(),
+      }),
+    });
+  }
+
+  const handleSkipReasonChosen = (reason: VisitSkipReason) => {
+    setIsSkipSheetVisible(false);
+
+    Alert.alert(
+      'Skip this stop?',
+      'This stop will be marked skipped and you will move on in your route.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Skip Stop',
+          onPress: () => {
+            void handleConfirmSkip(reason);
+          },
+        },
+      ],
+    );
+  };
+
+  const handleConfirmSkip = async (reason: VisitSkipReason) => {
+    if (!visit) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const result = await skipVisit(visit.id, reason);
+
+      if (!result) {
+        return;
+      }
+
+      if (result.hasNextStop && result.snapshot.promotedVisitId) {
+        await applyVisitPromotion(result.snapshot);
+      }
+
+      void import('@/services/workday-coordinator-integration').then(
+        ({ refreshWorkdayCoordinatorFromPersistence }) =>
+          refreshWorkdayCoordinatorFromPersistence({
+            action: 'skipVisit',
+            completionPhase: 'idle',
+          }),
+      );
+
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.navigate('/' as const);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -302,7 +453,7 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
     );
   }
 
-  const isVisitLogActive = visit?.status === 'checked_in';
+  const isVisitLogActive = visit ? isVisitLogActiveRouteStop(visit.status) : false;
 
   if (isVisitLogActive && visit) {
     return (
@@ -321,25 +472,29 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
             router.back();
           }}
           onChangeNoteText={setNoteText}
+          onCheckIn={() => {
+            void handleCheckIn();
+          }}
           onCompleteVisit={() => {
             void handleCompleteVisit();
           }}
-          onOpenDelivery={() => {
-            if (pendingOrders.length === 1) {
-              setDeliveryStatusOrderId(pendingOrders[0]!.id);
-              return;
-            }
-
-            setIsPendingOrdersVisible(true);
+          onOpenSkipStop={() => {
+            setIsSkipSheetVisible(true);
           }}
-          onOpenLastVisitSummary={() => {
-            setVisitLogInfoSheet('last-visit');
+          onUndoCheckIn={handleUndoCheckIn}
+          onOpenDelivery={() => {
+            router.push(`/store/${storeId}/deliveries`);
+          }}
+          onOpenOrders={() => {
+            setIsOrderLogVisible(true);
           }}
           onOpenStoreInfo={() => {
-            setVisitLogInfoSheet('store-info');
+            setIsVisitLogStoreEditVisible(true);
           }}
           orderHistory={orderHistory}
           pendingOrders={pendingOrders}
+          recentVisits={recentVisits}
+          recentVisitsTotalCount={recentVisitsTotalCount}
           store={store}
           visit={visit}
         />
@@ -349,7 +504,24 @@ export function StoreOverviewScreen({ storeId }: StoreOverviewScreenProps) {
           onClose={() => {
             setVisitLogInfoSheet(null);
           }}
+        />
+        <VisitLogStoreEditSheet
+          onClose={() => {
+            setIsVisitLogStoreEditVisible(false);
+          }}
+          onSaved={(updatedStore) => {
+            setStore(updatedStore);
+          }}
           store={store}
+          visible={isVisitLogStoreEditVisible}
+        />
+        <VisitLogSkipSheet
+          onClose={() => {
+            setIsSkipSheetVisible(false);
+          }}
+          onConfirmSkip={handleSkipReasonChosen}
+          suggestedReason={resolveSkipSuggestion()}
+          visible={isSkipSheetVisible}
         />
         <OrderLogSheet
           onClose={() => {

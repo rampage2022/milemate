@@ -82,6 +82,11 @@ function sortChecksNewestFirst(
   return [...checks].sort((left, right) => right.checkedAt.localeCompare(left.checkedAt));
 }
 
+export async function deleteDeliveryCheckById(checkId: string): Promise<void> {
+  const checks = await readDeliveryChecks();
+  await writeDeliveryChecks(checks.filter((check) => check.id !== checkId));
+}
+
 export async function createStoreOrderDeliveryCheck(
   input: CreateStoreOrderDeliveryCheckInput,
 ): Promise<StoreOrderDeliveryCheck> {
@@ -113,6 +118,10 @@ export async function createStoreOrderDeliveryCheck(
   await writeDeliveryChecks([...existingChecks, check]);
 
   return check;
+}
+
+export async function getAllStoreOrderDeliveryChecks(): Promise<StoreOrderDeliveryCheck[]> {
+  return readDeliveryChecks();
 }
 
 export async function getDeliveryChecksForOrder(

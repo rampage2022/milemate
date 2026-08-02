@@ -8,6 +8,7 @@ import type {
   StoreVisitStateSnapshot,
   StoreVisitStatus,
   VisitAdvancementSnapshot,
+  VisitSkipReason,
 } from '@/types/store-visit';
 import { getTodayDateString } from '@/utils/today-date';
 import { resolveLastCompletedVisitForDisplay } from '@/utils/store-visit-presentation';
@@ -64,7 +65,10 @@ function isStoreVisit(value: unknown): value is StoreVisit {
       typeof record.visitDurationMs === 'number') &&
     (record.skipReason === undefined ||
       record.skipReason === 'store_closed' ||
+      record.skipReason === 'receiving_closed' ||
       record.skipReason === 'no_delivery' ||
+      record.skipReason === 'manager_unavailable' ||
+      record.skipReason === 'unable_to_access' ||
       record.skipReason === 'return_later' ||
       record.skipReason === 'time_constraint' ||
       record.skipReason === 'route_changed' ||
@@ -484,6 +488,82 @@ export async function completeVisit(
     snapshot: {
       completedVisitId: visit.id,
       completedVisitState,
+      promotedVisitId: nextUnresolved?.id ?? null,
+      promotedVisitState: nextUnresolved
+        ? snapshotVisitState(nextUnresolved)
+        : null,
+    },
+    nextStoreId: nextUnresolved?.storeId ?? null,
+    nextVisitId: nextUnresolved?.id ?? null,
+    nextStoreName: nextStore?.name ?? null,
+    hasNextStop,
+    afterCompletionMode: await resolveAfterCompletionMode(visit),
+  };
+}
+
+export type SkipVisitResult = CompleteVisitResult;
+
+export async function skipVisit(
+  visitId: string,
+  skipReason: VisitSkipReason,
+): Promise<SkipVisitResult | null> {
+  const visits = await readVisits();
+  const scheduledDate = getTodayDateString();
+  const todaysVisits = sortVisitsByRouteOrder(
+    visits.filter((visit) => visit.scheduledDate === scheduledDate),
+  );
+
+  const visitIndex = todaysVisits.findIndex((visit) => visit.id === visitId);
+
+  if (visitIndex === -1) {
+    return null;
+  }
+
+  const visit = todaysVisits[visitIndex];
+
+  if (
+    visit.status !== 'pending' &&
+    visit.status !== 'current' &&
+    visit.status !== 'checked_in'
+  ) {
+    return null;
+  }
+
+  const priorState = snapshotVisitState(visit);
+  const now = Date.now();
+
+  const skippedVisit: StoreVisit = {
+    ...visit,
+    status: 'skipped',
+    skipReason,
+    completedAt: now,
+    visitDurationMs:
+      typeof visit.checkedInAt === 'number' && visit.checkedInAt <= now
+        ? now - visit.checkedInAt
+        : visit.visitDurationMs,
+    updatedAt: now,
+    afterCompletionOverride: undefined,
+  };
+
+  const nextUnresolved = todaysVisits.find(
+    (candidate) =>
+      candidate.routeOrder > visit.routeOrder &&
+      !isTerminalRouteStopStatus(candidate.status),
+  );
+
+  const hasNextStop = visitHasRemainingRouteWork(todaysVisits, visit.routeOrder);
+
+  const visitMap = new Map(visits.map((entry) => [entry.id, entry]));
+  visitMap.set(visit.id, skippedVisit);
+  await writeVisits([...visitMap.values()]);
+
+  const { getStoreById } = await import('@/services/stores');
+  const nextStore = nextUnresolved ? await getStoreById(nextUnresolved.storeId) : null;
+
+  return {
+    snapshot: {
+      completedVisitId: visit.id,
+      completedVisitState: priorState,
       promotedVisitId: nextUnresolved?.id ?? null,
       promotedVisitState: nextUnresolved
         ? snapshotVisitState(nextUnresolved)

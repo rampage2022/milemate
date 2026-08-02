@@ -1,7 +1,12 @@
-export type StoreOrderStatus = 'pending' | 'delivered';
+export type StoreOrderStatus = 'pending' | 'delivered' | 'missed';
+
+export type StoreOrderConfirmationSource = 'visit-log-deliveries' | 'legacy';
 
 export type StoreOrder = {
   createdAt: string;
+  /** When the delivery outcome was confirmed (ISO). */
+  confirmedAt?: string;
+  confirmationSource?: StoreOrderConfirmationSource;
   deliveredAt?: string;
   expectedDeliveryDate: string;
   id: string;

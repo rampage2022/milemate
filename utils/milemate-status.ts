@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppColors } from '@/components/shared/app-theme';
 import type { StoreVisitStatus } from '@/types/store-visit';
 import type { VisitSkipReason } from '@/types/store-visit';
+import { VISIT_SKIP_REASON_LABELS } from '@/utils/visit-skip-reason-labels';
 
 export type MileMateStatusTone =
   | 'completed'
@@ -78,14 +79,7 @@ const TONE_PRESENTATION: Record<
   },
 };
 
-export const SKIP_REASON_LABELS: Record<VisitSkipReason, string> = {
-  store_closed: 'Store Closed',
-  no_delivery: 'No Delivery',
-  return_later: 'Return Later',
-  time_constraint: 'Time Constraint',
-  route_changed: 'Route Changed',
-  other: 'Other',
-};
+export { VISIT_SKIP_REASON_LABELS as SKIP_REASON_LABELS } from '@/utils/visit-skip-reason-labels';
 
 export function getStatusColor(tone: MileMateStatusTone): string {
   return TONE_PRESENTATION[tone].color;
@@ -108,7 +102,7 @@ export function getSkipReasonLabel(reason: VisitSkipReason | undefined): string 
     return null;
   }
 
-  return SKIP_REASON_LABELS[reason] ?? null;
+  return VISIT_SKIP_REASON_LABELS[reason] ?? null;
 }
 
 export function getVisitStatusTone(

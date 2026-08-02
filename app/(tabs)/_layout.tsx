@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
@@ -13,13 +13,19 @@ import {
 } from '@/components/shared/app-theme';
 import { useWorkdayNavigation } from '@/contexts/workday-navigation-context';
 import { useWorkdayTrackerContext } from '@/contexts/workday-tracker-context';
+import { shouldShowTabBarOnStoresDuringPreWorkday } from '@/utils/stores-map-navigation-intent';
 
 export default function TabLayout() {
   const { mode, preWorkdayTabBarHidden } = useWorkdayNavigation();
   const { isRestoring } = useWorkdayTrackerContext();
+  const pathname = usePathname();
+  const showTabBarDuringPreWorkday = shouldShowTabBarOnStoresDuringPreWorkday({
+    pathname,
+    preWorkdayTabBarHidden,
+  });
 
   const hideTabBarLayout =
-    mode === 'completion' || isRestoring || preWorkdayTabBarHidden;
+    mode === 'completion' || isRestoring || (preWorkdayTabBarHidden && !showTabBarDuringPreWorkday);
 
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) {

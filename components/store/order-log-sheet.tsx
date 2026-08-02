@@ -29,7 +29,15 @@ function formatPlacedDate(placedAt: string): string {
 }
 
 function statusLabel(order: StoreOrder): string {
-  return order.status === 'delivered' ? 'Delivered' : 'Pending';
+  if (order.status === 'delivered') {
+    return 'Delivered';
+  }
+
+  if (order.status === 'missed') {
+    return 'Missed';
+  }
+
+  return 'Pending';
 }
 
 export function OrderLogSheet({

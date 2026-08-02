@@ -24,8 +24,8 @@ export type MileMateDatePickerProps = {
 };
 
 /**
- * Date picker styled for MileMate surfaces (light cards).
- * Forces light calendar chrome so day/month numbers stay readable.
+ * Date picker styled for MileMate dark surfaces.
+ * Uses dark calendar chrome with light day/month labels for contrast.
  */
 export function MileMateDatePicker({
   display,
@@ -60,7 +60,7 @@ export function MileMateDatePicker({
           onChange={onChange}
           style={[styles.picker, style]}
           textColor={AppColors.textPrimary}
-          themeVariant="light"
+          themeVariant="dark"
           value={value}
         />
       </View>
@@ -95,6 +95,8 @@ const styles = StyleSheet.create({
   wrapper: {
     alignSelf: 'stretch',
     backgroundColor: AppColors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
     width: '100%',
   },
   wrapperInline: {

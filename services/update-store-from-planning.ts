@@ -43,6 +43,9 @@ export async function updateStoreFromPlanningEditor(
     city: input.city.trim(),
     state: input.state.trim(),
     postalCode: input.postalCode.trim(),
+    receivingRestriction: existing.receivingRestriction,
+    receivingHours: existing.receivingHours,
+    operatingHours: existing.operatingHours,
     updatedAt: Date.now(),
   };
 

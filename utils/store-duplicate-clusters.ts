@@ -177,7 +177,7 @@ export function buildStoreIdRemapFromClusters(clusters: StoreCluster[]): Map<str
 
 export function resolveRemappedStoreId(
   storeId: string,
-  remap: Map<string, string>,
+  remap: ReadonlyMap<string, string>,
 ): string {
   let current = storeId;
   const visited = new Set<string>();

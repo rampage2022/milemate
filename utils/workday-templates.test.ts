@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { getTodayVisits, replaceTodayVisits, __resetStoreVisitsStorageForTests, __setStoreVisitsStorageForTests } from '@/services/store-visits';
 import { saveStores, __resetStoresStorageForTests, __setStoresStorageForTests } from '@/services/stores';
+import { __resetStoreImportIdAliasesForTests } from '@/services/store-import-id-aliases';
 import {
   __resetWorkdayTemplatesStorageForTests,
   __setWorkdayTemplatesStorageForTests,
@@ -59,6 +60,7 @@ async function runTests() {
   __resetWorkdayTemplatesStorageForTests();
   __resetStoresStorageForTests();
   __resetStoreVisitsStorageForTests();
+  __resetStoreImportIdAliasesForTests();
   __setWorkdayTemplatesStorageForTests([]);
   __setStoresStorageForTests([]);
   __setStoreVisitsStorageForTests([]);
@@ -119,6 +121,8 @@ async function runTests() {
     () => createWorkdayTemplate({ name: 'Monday', stops: [] }),
     /Add at least one stop/,
   );
+
+  __setStoresStorageForTests([storeA, storeB, manualStore]);
 
   const template = await saveCurrentStopsAsWorkdayTemplate({
     name: 'Monday',
@@ -244,6 +248,7 @@ async function runTests() {
   __resetWorkdayTemplatesStorageForTests();
   __resetStoresStorageForTests();
   __resetStoreVisitsStorageForTests();
+  __resetStoreImportIdAliasesForTests();
   console.log('workday-templates tests passed');
 }
 

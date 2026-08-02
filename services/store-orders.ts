@@ -7,6 +7,7 @@ import {
   validateCreateStoreOrderInput,
 } from '@/utils/store-order-presentation';
 import { isStoreOrderExpectedOnDate } from '@/utils/store-order-delivery-presentation';
+import { resolveRemappedStoreId } from '@/utils/store-duplicate-clusters';
 
 const STORE_ORDERS_STORAGE_KEY = '@milemate/store-orders';
 
@@ -24,8 +25,11 @@ function isStoreOrder(value: unknown): value is StoreOrder {
     typeof record.storeId === 'string' &&
     typeof record.placedAt === 'string' &&
     typeof record.expectedDeliveryDate === 'string' &&
-    (record.status === 'pending' || record.status === 'delivered') &&
+    (record.status === 'pending' ||
+      record.status === 'delivered' ||
+      record.status === 'missed') &&
     (record.deliveredAt === undefined || typeof record.deliveredAt === 'string') &&
+    (record.confirmedAt === undefined || typeof record.confirmedAt === 'string') &&
     (record.note === undefined || typeof record.note === 'string') &&
     typeof record.createdAt === 'string' &&
     typeof record.updatedAt === 'string'
@@ -66,7 +70,7 @@ async function writeOrders(orders: StoreOrder[]): Promise<void> {
 }
 
 function buildStoreOrderId(storeId: string, createdAtMs: number): string {
-  return `order-${storeId}-${createdAtMs}`;
+  return `order-${storeId}-${createdAtMs}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function createStoreOrder(input: CreateStoreOrderInput): Promise<StoreOrder> {
@@ -100,6 +104,17 @@ export async function getOrdersForStore(storeId: string): Promise<StoreOrder[]> 
   const orders = await readOrders();
 
   return orders.filter((order) => order.storeId === storeId);
+}
+
+export async function getOrdersForCanonicalStore(
+  canonicalStoreId: string,
+  storeIdRemap: ReadonlyMap<string, string>,
+): Promise<StoreOrder[]> {
+  const orders = await readOrders();
+
+  return orders.filter(
+    (order) => resolveRemappedStoreId(order.storeId, storeIdRemap) === canonicalStoreId,
+  );
 }
 
 export async function getOrderHistoryForStore(storeId: string): Promise<StoreOrder[]> {
@@ -139,6 +154,8 @@ export async function markStoreOrderDelivered(orderId: string): Promise<StoreOrd
     ...existing,
     status: 'delivered',
     deliveredAt: new Date().toISOString(),
+    confirmedAt: new Date().toISOString(),
+    confirmationSource: 'visit-log-deliveries',
     updatedAt: new Date().toISOString(),
   };
 
@@ -147,6 +164,56 @@ export async function markStoreOrderDelivered(orderId: string): Promise<StoreOrd
   await writeOrders(nextOrders);
 
   return updated;
+}
+
+export async function markStoreOrderMissed(orderId: string): Promise<StoreOrder | null> {
+  const orders = await readOrders();
+  const index = orders.findIndex((order) => order.id === orderId);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const existing = orders[index]!;
+
+  if (existing.status === 'missed') {
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const updated: StoreOrder = {
+    ...existing,
+    status: 'missed',
+    confirmedAt: now,
+    confirmationSource: 'visit-log-deliveries',
+    updatedAt: now,
+  };
+
+  const nextOrders = [...orders];
+  nextOrders[index] = updated;
+  await writeOrders(nextOrders);
+
+  return updated;
+}
+
+export async function revertStoreOrderToUnconfirmed(
+  snapshot: StoreOrder,
+): Promise<StoreOrder | null> {
+  const orders = await readOrders();
+  const index = orders.findIndex((order) => order.id === snapshot.id);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const nextOrders = [...orders];
+  nextOrders[index] = {
+    ...snapshot,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeOrders(nextOrders);
+
+  return nextOrders[index] ?? null;
 }
 
 export async function getAllStoreOrders(): Promise<StoreOrder[]> {

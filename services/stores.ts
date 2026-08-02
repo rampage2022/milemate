@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Store } from '@/types/store';
 import { getStoreDisplayName } from '@/utils/get-store-display-name';
 import { normalizePersistedImportedStore } from '@/utils/store-import/normalize-persisted-store';
+import { applyNormalizedReceivingRestrictionToStore } from '@/utils/store-receiving-restriction';
 
 const STORES_STORAGE_KEY = '@milemate/stores';
 
@@ -28,6 +29,7 @@ function isStore(value: unknown): value is Store {
     (record.storeNumber === undefined || typeof record.storeNumber === 'string') &&
     (record.reverseGeocodedAddressLine === undefined ||
       typeof record.reverseGeocodedAddressLine === 'string') &&
+    (record.receivingHours === undefined || typeof record.receivingHours === 'string') &&
     typeof record.createdAt === 'number' &&
     typeof record.updatedAt === 'number'
   );
@@ -68,7 +70,9 @@ async function writeStores(stores: Store[]): Promise<void> {
 
 async function readStoresNormalized(): Promise<Store[]> {
   const stores = await readStores();
-  const normalized = stores.map(normalizePersistedImportedStore);
+  const normalized = stores
+    .map(normalizePersistedImportedStore)
+    .map(applyNormalizedReceivingRestrictionToStore);
   const changed = normalized.some((store, index) => store !== stores[index]);
 
   if (changed) {

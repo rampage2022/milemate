@@ -7,7 +7,10 @@ export type StoreVisitStatus =
 
 export type VisitSkipReason =
   | 'store_closed'
+  | 'receiving_closed'
   | 'no_delivery'
+  | 'manager_unavailable'
+  | 'unable_to_access'
   | 'return_later'
   | 'time_constraint'
   | 'route_changed'

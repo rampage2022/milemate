@@ -1,3 +1,8 @@
+import type { StoreReceivingRestriction } from '@/types/store-receiving-restriction';
+import type { ManagerPhoneType } from '@/types/manager-phone-type';
+
+export type { ManagerPhoneType } from '@/types/manager-phone-type';
+
 export type Store = {
   id: string;
   name: string;
@@ -13,6 +18,17 @@ export type Store = {
   reverseGeocodedAddressLine?: string;
   managerName?: string;
   managerPhone?: string;
+  /** When `mobile`, Visit Log may offer SMS; unset legacy numbers are call-only. */
+  managerPhoneType?: ManagerPhoneType;
+  /** Normalized receiving window for route planning (minutes after local midnight). */
+  receivingRestriction?: StoreReceivingRestriction;
+  /** Legacy free-text receiving label; preserved on disk, migrated on read when needed. */
+  receivingHours?: string;
+  /** Local store hours as minutes after midnight (close minute is exclusive). */
+  operatingHours?: {
+    closeMinutes: number;
+    openMinutes: number;
+  };
   createdAt: number;
   updatedAt: number;
 };
@@ -21,13 +37,12 @@ import {
   hasUsableStructuredAddress,
   resolveStoreDisplayAddressLine,
 } from '@/utils/store-display-address-core';
+import { formatStructuredStoreMailingAddress } from '@/utils/store-identity-presentation';
 
 export function formatStoreAddress(store: Store): string {
   if (!hasUsableStructuredAddress(store)) {
     return resolveStoreDisplayAddressLine(store);
   }
 
-  const line2 = store.addressLine2 ? `, ${store.addressLine2}` : '';
-
-  return `${store.addressLine1}${line2}, ${store.city}, ${store.state} ${store.postalCode}`.trim();
+  return formatStructuredStoreMailingAddress(store);
 }

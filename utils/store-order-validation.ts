@@ -12,7 +12,9 @@ export function isCurrentSchemaStoreOrder(value: unknown): value is StoreOrder {
     typeof record.storeId === 'string' &&
     typeof record.placedAt === 'string' &&
     typeof record.expectedDeliveryDate === 'string' &&
-    (record.status === 'pending' || record.status === 'delivered') &&
+    (record.status === 'pending' ||
+      record.status === 'delivered' ||
+      record.status === 'missed') &&
     (record.deliveredAt === undefined || typeof record.deliveredAt === 'string') &&
     (record.note === undefined || typeof record.note === 'string') &&
     typeof record.createdAt === 'string' &&

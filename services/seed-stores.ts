@@ -15,6 +15,10 @@ function createStore(
   const now = Date.now();
 
   return {
+    operatingHours: {
+      openMinutes: 8 * 60,
+      closeMinutes: 22 * 60,
+    },
     ...partial,
     createdAt: now,
     updatedAt: now,

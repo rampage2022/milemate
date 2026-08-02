@@ -8,7 +8,6 @@ import { StatusBar } from 'expo-status-bar';
 
 import { appShellStyles } from '@/components/redesign/layout/app-shell-styles';
 import { CheckInNotificationNavigation } from '@/components/notifications/check-in-notification-navigation';
-import { DevResetHomeButton } from '@/components/dev/dev-reset-home-button';
 import { AppShell } from '@/components/shared/app-theme';
 import { MileMateNavigationTheme } from '@/constants/milemate-navigation-theme';
 import { RouteEditSessionProvider } from '@/contexts/route-edit-session-context';
@@ -68,6 +67,10 @@ export default function RootLayout() {
                   options={{ headerShown: false, title: 'Store' }}
                 />
                 <Stack.Screen
+                  name="store-groups/index"
+                  options={{ headerShown: false, title: 'Store Groups' }}
+                />
+                <Stack.Screen
                   name="store-import/index"
                   options={{ headerShown: false, title: 'Import Stores' }}
                 />
@@ -78,7 +81,6 @@ export default function RootLayout() {
                 <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
               </Stack>
               {ENABLE_GESTURE_DEBUG_UI ? <GestureDebugOverlay /> : null}
-              <DevResetHomeButton />
               <StatusBar style={AppShell.statusBarStyle} />
             </ThemeProvider>
             </ArrivalCheckInProvider>

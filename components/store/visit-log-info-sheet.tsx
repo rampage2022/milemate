@@ -2,24 +2,20 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { StoreInformationSection } from '@/components/store/store-information-section';
 import { LastVisitCard } from '@/components/store/last-visit-card';
 import { AppColors, MileMateTokens } from '@/components/shared/app-theme';
 import type { StoreVisit } from '@/types/store-visit';
-import type { Store } from '@/types/store';
 
 type VisitLogInfoSheetProps = {
-  kind: 'last-visit' | 'store-info' | null;
+  kind: 'last-visit' | null;
   lastCompletedVisit: StoreVisit | null;
   onClose: () => void;
-  store: Store;
 };
 
 export function VisitLogInfoSheet({
   kind,
   lastCompletedVisit,
   onClose,
-  store,
 }: VisitLogInfoSheetProps) {
   const insets = useSafeAreaInsets();
   const visible = kind !== null;
@@ -29,14 +25,11 @@ export function VisitLogInfoSheet({
       <Pressable accessibilityLabel="Close" onPress={onClose} style={styles.backdrop} />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>
-            {kind === 'store-info' ? 'Store Info' : 'Last Visit'}
-          </Text>
+          <Text style={styles.sheetTitle}>Last Visit</Text>
           <Pressable accessibilityRole="button" hitSlop={8} onPress={onClose}>
             <Ionicons color={AppColors.textPrimary} name="close" size={24} />
           </Pressable>
         </View>
-        {kind === 'store-info' ? <StoreInformationSection store={store} /> : null}
         {kind === 'last-visit' ? (
           <LastVisitCard lastCompletedVisit={lastCompletedVisit} />
         ) : null}
