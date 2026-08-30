@@ -10,14 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.MileMate",
+      "bundleIdentifier": "com.rayarmstrong.milemate",
       "infoPlist": {
+        "CFBundleDisplayName": "MileMate",
         "LSApplicationQueriesSchemes": [
-          "maps",
-          "comgooglemaps",
-          "googlechromes",
-          "http",
-          "https",
           "maps",
           "comgooglemaps",
           "googlechromes",
@@ -28,6 +24,7 @@
       }
     },
     "android": {
+      "package": "com.rayarmstrong.milemate",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
